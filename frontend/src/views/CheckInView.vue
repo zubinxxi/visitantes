@@ -1,0 +1,739 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import api from '@/lib/api'
+import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
+import VisitorBadge from '@/components/VisitorBadge.vue'
+import Multiselect from 'vue-multiselect'
+
+const router = useRouter()
+const { success, error: showError, info } = useToast()
+const auth = useAuthStore()
+
+interface ParsedVisitor {
+  id_card_number: string
+  names: string
+  surnames: string
+  gender: string
+  province: string
+  nationality: string
+  id_num_control: string
+}
+
+interface Visitor {
+  id: number
+  names: string
+  surnames: string
+  id_card_number: string
+  photo: string
+  gender: string
+  province: string
+  nationality: string
+}
+
+interface Uadm {
+  id: number
+  name: string
+}
+
+interface Building {
+  id: number
+  description: string
+}
+
+const loading = ref(false)
+const scanning = ref(false)
+const qrInput = ref('')
+const qrScanned = ref(false)
+const needsRegistration = ref(false)
+const currentVisitor = ref<Visitor | null>(null)
+const currentVisit = ref<{ id: number; check_in: string } | null>(null)
+const parsedData = ref<ParsedVisitor | null>(null)
+
+const uadmOptions = ref<Uadm[]>([])
+const buildingOptions = ref<Building[]>([])
+const genderOptions = [
+  { value: 'M', label: 'Masculino' },
+  { value: 'F', label: 'Femenino' },
+]
+
+function getGenderObject(value: string) {
+  return genderOptions.find(g => g.value === value) || null
+}
+
+function getPhotoUrl(photoPath: string | null): string {
+  if (!photoPath) return ''
+  if (photoPath.startsWith('data:')) return photoPath
+  if (photoPath.startsWith('http')) return photoPath + '?t=' + Date.now()
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  return `${baseUrl}${photoPath}?t=${Date.now()}`
+}
+const selectedUadms = ref<number[]>([])
+const selectedBuildings = ref<number[]>([])
+const confirmCompanyRepresents = ref('')
+const confirmPurpose = ref('')
+
+const showBadge = ref(false)
+const badgeData = ref<{
+  visit_id: number
+  visitor_name: string
+  id_card_number: string
+  check_in: string
+  uadms: string
+  buildings: string
+  qr_data: string
+} | null>(null)
+
+interface LabelSize {
+  value: string
+  label: string
+  width: number
+  height: number
+}
+
+const labelSizes: LabelSize[] = [
+  { value: '105x76', label: '105x76mm (vertical)', width: 397, height: 287 },
+  { value: '76x105', label: '76x105mm (horizontal)', width: 287, height: 397 },
+  { value: '2x4', label: '2" x 4"', width: 192, height: 384 },
+  { value: '4x2', label: '4" x 2"', width: 384, height: 192 },
+]
+const defaultSize: LabelSize = { value: '105x76', label: '105x76mm (vertical)', width: 397, height: 287 }
+const selectedLabelSize = ref<LabelSize>(defaultSize)
+
+const showRegisterForm = ref(false)
+const registerForm = ref({
+  names: '',
+  surnames: '',
+  gender: getGenderObject('M'),
+  id_card_number: '',
+  id_num_control: '',
+  province: '',
+  nationality: '',
+  company_represents: '',
+  purpose: '',
+  photo: '',
+})
+
+const showCamera = ref(false)
+const videoRef = ref<HTMLVideoElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
+const stream = ref<MediaStream | null>(null)
+const photoRequired = ref(false)
+
+async function loadOptions() {
+  try {
+    const [uadmRes, buildingRes] = await Promise.all([
+      api.get('/maintenance/uadms', { params: { limit: 100 } }),
+      api.get('/maintenance/buildings', { params: { limit: 100 } }),
+    ])
+    uadmOptions.value = uadmRes.data.items || uadmRes.data
+    buildingOptions.value = buildingRes.data.items || buildingRes.data
+  } catch (e) {
+    console.error('Error loading options:', e)
+  }
+}
+
+async function startCamera() {
+  try {
+    if (stream.value) {
+      stopCamera()
+    }
+    stream.value = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: 'user',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      } 
+    })
+    
+    await nextTick()
+    
+    setTimeout(() => {
+      if (videoRef.value) {
+        videoRef.value.srcObject = stream.value
+      }
+    }, 100)
+    
+    showCamera.value = true
+    photoRequired.value = true
+  } catch (e) {
+    console.error('Camera error:', e)
+    showError('No se pudo acceder a la cámara')
+  }
+}
+
+async function handleQrInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  if (!value) return
+  
+  if (event instanceof KeyboardEvent && (event as KeyboardEvent).key !== 'Enter') {
+    return
+  }
+  
+  qrInput.value = value
+  qrScanned.value = true
+  await processQr(value)
+  
+  qrInput.value = ''
+}
+
+async function processQr(rawData: string) {
+  loading.value = true
+  try {
+    const response = await api.post('/checkin/process-qr', { raw_data: rawData })
+    const data = response.data
+    
+    if (data.needs_registration) {
+      needsRegistration.value = true
+      parsedData.value = data.visitor_data
+      registerForm.value = {
+        names: data.visitor_data.names || '',
+        surnames: data.visitor_data.surnames || '',
+        gender: getGenderObject(data.visitor_data.gender || 'M'),
+        id_card_number: data.visitor_data.id_card_number || '',
+        id_num_control: data.visitor_data.id_num_control || '',
+        province: data.visitor_data.province || '',
+        nationality: data.visitor_data.nationality || '',
+        company_represents: '',
+        purpose: '',
+        photo: '',
+      }
+      showRegisterForm.value = true
+    } else {
+      needsRegistration.value = false
+      currentVisitor.value = {
+        ...data.visitor,
+        photo: getPhotoUrl(data.visitor.photo)
+      }
+      currentVisit.value = data.visit
+      await loadOptions()
+    }
+    
+    success('QR procesado correctamente')
+  } catch (e: any) {
+    console.error('Error processing QR:', e)
+    showError(e.message || 'Error al procesar QR')
+  } finally {
+    loading.value = false
+  }
+}
+
+function stopCamera() {
+  if (stream.value) {
+    stream.value.getTracks().forEach(track => track.stop())
+    stream.value = null
+  }
+  showCamera.value = false
+}
+
+function takePhoto() {
+  if (!videoRef.value || !canvasRef.value) return
+  
+  const video = videoRef.value
+  const canvas = canvasRef.value
+  
+  canvas.width = video.videoWidth || 640
+  canvas.height = video.videoHeight || 480
+  
+  const ctx = canvas.getContext('2d')
+  if (ctx) {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    registerForm.value.photo = canvas.toDataURL('image/jpeg', 0.8)
+  }
+  photoRequired.value = false
+  stopCamera()
+}
+
+async function registerAndCheckIn() {
+  if (!registerForm.value.photo) {
+    photoRequired.value = true
+    showError('La foto es obligatoria')
+    return
+  }
+  
+  loading.value = true
+  try {
+    let photoUrl = registerForm.value.photo
+    
+    if (registerForm.value.photo.startsWith('data:')) {
+      const formData = new FormData()
+      const blob = await fetch(registerForm.value.photo).then(r => r.blob())
+      formData.append('file', new File([blob], `${registerForm.value.id_card_number}.jpg`, { type: 'image/jpeg' }))
+      
+      try {
+        const uploadRes = await api.post('/visitors/upload-photo-temp', formData, {
+          params: { cedula: registerForm.value.id_card_number }
+        })
+        photoUrl = uploadRes.data.url
+      } catch (e) {
+        console.error('Error uploading photo:', e)
+      }
+    }
+    
+    console.log('Creating visitor with photo:', photoUrl)
+    
+    const userLogin = auth.user?.login || 'sysadmin'
+    const genderValue = registerForm.value.gender?.value || 'M'
+    
+    await api.post('/visitors', {
+      names: registerForm.value.names,
+      surnames: registerForm.value.surnames,
+      gender: genderValue,
+      id_card_number: registerForm.value.id_card_number,
+      id_num_control: registerForm.value.id_num_control,
+      province: registerForm.value.province,
+      nationality: registerForm.value.nationality,
+      photo: photoUrl,
+      user_created: userLogin,
+    })
+    console.log('Visitor created successfully')
+    
+    const visitRes = await api.post('/visits/checkin', {
+      id_card_number: registerForm.value.id_card_number,
+      names: registerForm.value.names,
+      surnames: registerForm.value.surnames,
+      gender: genderValue,
+      id_num_control: registerForm.value.id_num_control,
+      province: registerForm.value.province,
+      nationality: registerForm.value.nationality,
+      company_represents: registerForm.value.company_represents,
+      purpose: registerForm.value.purpose,
+      uadm_ids: [],
+      building_ids: [],
+      id_type_of_proce: 6,
+      user_created: userLogin,
+    })
+    
+    currentVisit.value = { id: visitRes.data.id, check_in: visitRes.data.check_in }
+    showRegisterForm.value = false
+    
+    await loadOptions()
+    await loadVisitorData()
+    
+    success('Visitante registrado. Seleccione UADMs y Edificios para confirmar')
+  } catch (e: any) {
+    console.error('Error registering:', e)
+    showError(e.message || 'Error al registrar visitante')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadVisitorData() {
+  try {
+    const res = await api.get(`/visitors/cedula/${registerForm.value.id_card_number}`)
+    currentVisitor.value = {
+      id: res.data.id,
+      names: res.data.names,
+      surnames: res.data.surnames,
+      id_card_number: res.data.id_card_number,
+      photo: getPhotoUrl(res.data.photo),
+      gender: res.data.gender,
+      province: res.data.province,
+      nationality: res.data.nationality,
+    }
+  } catch (e) {
+    console.error('Error loading visitor:', e)
+  }
+}
+
+function confirmCheckIn() {
+  if (!currentVisit.value) return
+  
+  const uadmIds = selectedUadms.value.map((u: any) => u.id)
+  const buildingIds = selectedBuildings.value.map((b: any) => b.id)
+  
+  loading.value = true
+  api.post('/checkin/confirm', {
+    visit_id: currentVisit.value.id,
+    uadm_ids: uadmIds,
+    building_ids: buildingIds,
+    company_represents: confirmCompanyRepresents.value,
+    purpose: confirmPurpose.value,
+  })
+  .then(async () => {
+    const badgeRes = await api.get(`/checkin/visits/${currentVisit.value!.id}/badge`)
+    badgeData.value = badgeRes.data
+    showBadge.value = true
+    success('Check-in confirmado')
+  })
+  .catch((e: any) => {
+    showError(e.message || 'Error al confirmar check-in')
+  })
+  .finally(() => {
+    loading.value = false
+  })
+}
+
+function printBadge() {
+  window.print()
+}
+
+function resetForm() {
+  qrInput.value = ''
+  qrScanned.value = false
+  needsRegistration.value = false
+  currentVisitor.value = null
+  currentVisit.value = null
+  parsedData.value = null
+  showRegisterForm.value = false
+  showBadge.value = false
+  badgeData.value = null
+  selectedUadms.value = []
+  selectedBuildings.value = []
+  stopCamera()
+}
+
+onMounted(() => {
+  loadOptions()
+})
+
+onBeforeUnmount(() => {
+  stopCamera()
+})
+</script>
+
+<template>
+  <div>
+    <div class="mb-6">
+      <h1 class="text-lg font-medium text-gray-800 dark:text-white">Check-In de Visitantes</h1>
+    </div>
+
+    <!-- QR Input Section -->
+    <div v-if="!qrScanned" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs p-6 mb-6">
+      <h3 class="text-base font-medium text-gray-800 dark:text-white mb-4">Escanear Cédula</h3>
+      <p class="text-theme-sm text-gray-500 dark:text-gray-400 mb-4">
+        Utilice el lector de código de barras/QR para escanear la cédula del visitante
+      </p>
+      <input
+        v-model="qrInput"
+        @keydown.enter="handleQrInput"
+        @blur="handleQrInput"
+        type="text"
+        class="h-14 w-full text-lg rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+        placeholder="Escanee la cédula aquí..."
+        autofocus
+      />
+      <div v-if="loading" class="mt-4 flex items-center justify-center">
+        <span class="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent"></span>
+        <span class="ml-2 text-gray-600 dark:text-gray-400">Procesando...</span>
+      </div>
+    </div>
+
+    <!-- Registration Form (when visitor doesn't exist) -->
+    <div v-if="showRegisterForm" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs">
+      <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+        <h3 class="text-base font-medium text-gray-800 dark:text-white">Registrar Nuevo Visitante</h3>
+        <p class="text-theme-sm text-gray-500 dark:text-gray-400">El visitante no existe. Complete los datos y capture la foto.</p>
+      </div>
+      <form @submit.prevent="registerAndCheckIn" class="p-6 space-y-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Nombres <span class="text-error-500">*</span>
+            </label>
+            <input
+              v-model="registerForm.names"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Apellidos <span class="text-error-500">*</span>
+            </label>
+            <input
+              v-model="registerForm.surnames"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Cédula <span class="text-error-500">*</span>
+            </label>
+            <input
+              v-model="registerForm.id_card_number"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Género
+            </label>
+            <Multiselect
+              v-model="registerForm.gender"
+              :options="genderOptions"
+              :searchable="false"
+              :close-on-select="true"
+              placeholder="Seleccione..."
+              label="label"
+              track-by="value"
+              class="multiselect-dark"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Provincia
+            </label>
+            <input
+              v-model="registerForm.province"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Nacionalidad
+            </label>
+            <input
+              v-model="registerForm.nationality"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+            />
+          </div>
+        </div>
+
+        <!-- Photo Capture -->
+        <div>
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Foto <span class="text-error-500">*</span>
+          </label>
+          <div class="flex gap-3">
+            <button
+              v-if="!showCamera && !registerForm.photo"
+              @click="startCamera"
+              type="button"
+              class="rounded-lg bg-brand-500 px-4 py-2 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+            >
+              Tomar Foto
+            </button>
+            <div v-if="showCamera" class="space-y-3">
+              <video 
+                ref="videoRef" 
+                autoplay 
+                playsinline
+                muted
+                class="w-full max-w-xs rounded-lg bg-gray-900"
+              ></video>
+              <canvas ref="canvasRef" class="hidden"></canvas>
+              <div class="flex gap-2">
+                <button
+                  @click="takePhoto"
+                  type="button"
+                  class="rounded-lg bg-green-500 px-4 py-2 text-theme-sm font-medium text-white"
+                >
+                  Capturar
+                </button>
+                <button
+                  @click="stopCamera"
+                  type="button"
+                  class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-theme-sm font-medium text-gray-700 dark:text-gray-200"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+            <div v-if="registerForm.photo && !showCamera" class="flex items-center gap-3">
+              <img :src="registerForm.photo" class="h-20 w-20 object-cover rounded-lg border" />
+              <button
+                @click="startCamera"
+                type="button"
+                class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-theme-sm font-medium text-gray-700 dark:text-gray-200"
+              >
+                Cambiar
+              </button>
+            </div>
+          </div>
+          <p v-if="photoRequired" class="text-sm text-error-500 mt-1">La foto es obligatoria</p>
+        </div>
+
+        <div class="flex justify-between pt-4">
+          <button
+            @click="resetForm"
+            type="button"
+            class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            :disabled="loading"
+            class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
+          >
+            {{ loading ? 'Registrando...' : 'Registrar y Check-In' }}
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Confirmation Form (when visitor exists) -->
+    <div v-if="currentVisit && !showRegisterForm && !showBadge && currentVisitor" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs">
+      <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+        <h3 class="text-base font-medium text-gray-800 dark:text-white">Confirmar Check-In</h3>
+      </div>
+      <div class="p-6 space-y-5">
+        <!-- Visitor Info -->
+        <div class="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <img
+            v-if="currentVisitor?.photo"
+            :src="getPhotoUrl(currentVisitor?.photo)"
+            class="h-16 w-16 rounded-full object-cover"
+          />
+          <div v-else class="h-16 w-16 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+            <span class="text-2xl text-gray-500">{{ currentVisitor?.names?.charAt(0) }}</span>
+          </div>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">{{ currentVisitor?.names }} {{ currentVisitor?.surnames }}</p>
+            <p class="text-sm text-gray-500">{{ currentVisitor?.id_card_number }}</p>
+          </div>
+        </div>
+
+        <!-- UADM Selection -->
+        <div>
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Unidades Administrativas <span class="text-error-500">*</span>
+          </label>
+          <Multiselect
+            v-model="selectedUadms"
+            :options="uadmOptions"
+            :multiple="true"
+            :close-on-select="false"
+            :clear-on-select="false"
+            placeholder="Seleccione..."
+            label="name"
+            track-by="id"
+            class="multiselect-dark"
+          />
+        </div>
+
+<!-- Buildings Selection -->
+        <div>
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Edificios
+          </label>
+          <Multiselect
+            v-model="selectedBuildings"
+            :options="buildingOptions"
+            :multiple="true"
+            :close-on-select="false"
+            :clear-on-select="false"
+            placeholder="Seleccione..."
+            label="description"
+            track-by="id"
+            class="multiselect-dark"
+          />
+        </div>
+
+        <!-- Company and Purpose -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Empresa que representa
+            </label>
+            <input
+              v-model="confirmCompanyRepresents"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              placeholder="Empresa o institución"
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Propósito de la visita
+            </label>
+            <input
+              v-model="confirmPurpose"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              placeholder="Motivo de la visita"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-between pt-4">
+          <button
+            @click="resetForm"
+            type="button"
+            class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs"
+          >
+            Cancelar
+          </button>
+          <button
+            @click="confirmCheckIn"
+            :disabled="loading || selectedUadms.length === 0"
+            class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
+          >
+            {{ loading ? 'Confirmando...' : 'Confirmar Check-In' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Badge Preview & Print -->
+    <div v-if="showBadge && badgeData" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs p-6">
+      <h3 class="text-base font-medium text-gray-800 dark:text-white mb-4">Badge de Visitante</h3>
+      
+      <div class="mb-4 no-print">
+        <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+          Tamaño de etiqueta
+        </label>
+        <Multiselect
+          v-model="selectedLabelSize"
+          :options="labelSizes"
+          :searchable="false"
+          :close-on-select="true"
+          placeholder="Seleccione..."
+          label="label"
+          track-by="value"
+          class="multiselect-dark"
+        />
+      </div>
+      
+      <VisitorBadge
+        :visit-id="badgeData.visit_id"
+        :visitor-name="badgeData.visitor_name"
+        :id-card-number="badgeData.id_card_number"
+        :check-in="badgeData.check_in"
+        :uadms="badgeData.uadms"
+        :buildings="badgeData.buildings"
+        :label-width="selectedLabelSize?.width"
+        :label-height="selectedLabelSize?.height"
+      />
+      
+      <div class="flex justify-center gap-3 mt-6 no-print">
+        <button
+          @click="printBadge"
+          class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+        >
+          Imprimir Badge
+        </button>
+        <button
+          @click="resetForm"
+          class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs"
+        >
+          Nueva Visita
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+</style>
