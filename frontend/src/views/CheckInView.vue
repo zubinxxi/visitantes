@@ -42,6 +42,13 @@ interface Building {
   description: string
 }
 
+interface LabelSize {
+  value: string
+  label: string
+  width: number
+  height: number
+}
+
 const loading = ref(false)
 const scanning = ref(false)
 const qrInput = ref('')
@@ -50,6 +57,10 @@ const needsRegistration = ref(false)
 const currentVisitor = ref<Visitor | null>(null)
 const currentVisit = ref<{ id: number; check_in: string } | null>(null)
 const parsedData = ref<ParsedVisitor | null>(null)
+const showBadge = ref(false)
+const badgeData = ref<any>(null)
+const confirmCompanyRepresents = ref('')
+const confirmPurpose = ref('')
 
 const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
@@ -70,26 +81,13 @@ function getPhotoUrl(photoPath: string | null): string {
   return `${baseUrl}${photoPath}?t=${Date.now()}`
 }
 const selectedUadms = ref<number[]>([])
+const uadmSelectRef = ref<any>(null)
+
 const selectedBuildings = ref<number[]>([])
-const confirmCompanyRepresents = ref('')
-const confirmPurpose = ref('')
+const buildingSelectRef = ref<any>(null)
 
-const showBadge = ref(false)
-const badgeData = ref<{
-  visit_id: number
-  visitor_name: string
-  id_card_number: string
-  check_in: string
-  uadms: string
-  buildings: string
-  qr_data: string
-} | null>(null)
-
-interface LabelSize {
-  value: string
-  label: string
-  width: number
-  height: number
+function onSelect(ref: any) {
+  setTimeout(() => ref.close(), 0)
 }
 
 const labelSizes: LabelSize[] = [
@@ -367,7 +365,54 @@ function confirmCheckIn() {
 }
 
 function printBadge() {
-  window.print()
+  const printContent = document.querySelector('.visitor-badge-print-container')?.innerHTML
+  if (!printContent) return
+  
+  const width = selectedLabelSize.value?.width || 397
+  const height = selectedLabelSize.value?.height || 287
+  
+  const printHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Badge de Visitante</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+      <style>
+        @page { size: ${width}px ${height}px; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { border: 1px solid #000; padding: 4px; }
+        .bg-black { background-color: #000 !important; color: #fff !important; }
+        .bg-gray-200 { background-color: #e5e7eb !important; }
+        .w-full { width: 100%; }
+        .p-2 { padding: 8px; }
+        .text-center { text-align: center; }
+        .text-xs { font-size: 10px; }
+        .text-sm { font-size: 12px; }
+        .text-lg { font-size: 16px; }
+        .font-bold { font-weight: bold; }
+        .uppercase { text-transform: uppercase; }
+      </style>
+    </head>
+    <body style="width: ${width}px; height: ${height}px;">
+      ${printContent}
+    </body>
+    </html>
+  `
+  
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return
+  
+  printWindow.document.write(printHTML)
+  printWindow.document.close()
+  
+  printWindow.onload = () => {
+    printWindow.focus()
+    printWindow.print()
+    printWindow.close()
+  }
 }
 
 function resetForm() {
@@ -606,11 +651,12 @@ onBeforeUnmount(() => {
             Unidades Administrativas <span class="text-error-500">*</span>
           </label>
           <Multiselect
+            ref="uadmSelectRef"
             v-model="selectedUadms"
             :options="uadmOptions"
             :multiple="true"
-            :close-on-select="false"
-            :clear-on-select="false"
+            :close-on-select="true"
+            @select="() => onSelect(uadmSelectRef)"
             placeholder="Seleccione..."
             label="name"
             track-by="id"
@@ -624,11 +670,12 @@ onBeforeUnmount(() => {
             Edificios
           </label>
           <Multiselect
+            ref="buildingSelectRef"
             v-model="selectedBuildings"
             :options="buildingOptions"
             :multiple="true"
-            :close-on-select="false"
-            :clear-on-select="false"
+            :close-on-select="true"
+            @select="() => onSelect(buildingSelectRef)"
             placeholder="Seleccione..."
             label="description"
             track-by="id"
@@ -701,16 +748,18 @@ onBeforeUnmount(() => {
         />
       </div>
       
-      <VisitorBadge
-        :visit-id="badgeData.visit_id"
-        :visitor-name="badgeData.visitor_name"
-        :id-card-number="badgeData.id_card_number"
-        :check-in="badgeData.check_in"
-        :uadms="badgeData.uadms"
-        :buildings="badgeData.buildings"
-        :label-width="selectedLabelSize?.width"
-        :label-height="selectedLabelSize?.height"
-      />
+      <div class="visitor-badge-print-container">
+        <VisitorBadge
+          :visit-id="badgeData.visit_id"
+          :visitor-name="badgeData.visitor_name"
+          :id-card-number="badgeData.id_card_number"
+          :check-in="badgeData.check_in"
+          :uadms="badgeData.uadms"
+          :buildings="badgeData.buildings"
+          :label-width="selectedLabelSize?.width"
+          :label-height="selectedLabelSize?.height"
+        />
+      </div>
       
       <div class="flex justify-center gap-3 mt-6 no-print">
         <button
@@ -731,9 +780,29 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@page {
+  size: auto;
+  margin: 0;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+  }
+  
+  body > *:not(.visitor-badge-print-container) {
+    display: none !important;
+  }
+  
+  .visitor-badge-print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
   }
 }
 </style>

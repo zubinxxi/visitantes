@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
@@ -11,6 +11,7 @@ from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
 from app.services.audit_service import ScLog
 from app.schemas.visit import VisitRead
+from app.core.utils import now_panama
 
 
 class QrProcessRequest(BaseModel):
@@ -47,7 +48,7 @@ router = APIRouter(prefix="/checkin", tags=["checkin"])
 
 def _build_log_entry(username: str, action: str, description: str) -> ScLog:
     return ScLog(
-        inserted_date=datetime.now(timezone.utc),
+        inserted_date=now_panama(),
         username=username,
         application="visitorsdb",
         creator=username,
@@ -111,7 +112,7 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
         purpose="",
         buildings_visited="",
         uadm_visited="",
-        check_in=datetime.now(timezone.utc),
+        check_in=now_panama(),
         user_created=user.login,
     )
     session.add(visit)

@@ -154,6 +154,18 @@ onMounted(() => {
     print-color-adjust: exact !important;
   }
 
+  body > * {
+    display: none !important;
+  }
+  
+  .visitor-badge-wrapper {
+    display: block !important;
+  }
+  
+  .visitor-badge-wrapper * {
+    display: block !important;
+  }
+
   .bg-black, [style*="backgroundColor: black"] {
     background-color: black !important;
     color: white !important;
@@ -165,25 +177,6 @@ onMounted(() => {
 
   td, th {
     border: 1px solid black !important;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-
-  .bg-white,
-  .bg-white * {
-    visibility: visible;
-  }
-
-  .bg-white {
-    position: absolute;
-    left: 0;
-    top: 0;
-    margin: 0;
-    padding: 0;
-    width: v-bind(badgeWidth + 'px');
-    height: v-bind(badgeHeight + 'px');
   }
 }
 </style>

@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException, status, Query
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
 from app.api.deps import SessionDep, CurrentUser
 from app.models.security import SecUser
 from app.models.visit import Visit, VisitsUadmLink, VisitsBuildingsLink
+from app.core.utils import now_panama, today_start_panama
 from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
 from app.services.audit_service import ScLog
@@ -42,7 +43,7 @@ async def _get_building_names(session: AsyncSession, building_ids_str: str) -> s
 
 def _build_log_entry(username: str, action: str, description: str) -> ScLog:
     return ScLog(
-        inserted_date=datetime.now(timezone.utc),
+        inserted_date=now_panama(),
         username=username,
         application="visitorsdb",
         creator=username,
@@ -191,9 +192,7 @@ async def get_active_visits(session: SessionDep):
 
 @router.get("/today", response_model=list[VisitRead])
 async def get_today_visits(session: SessionDep):
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today_start = today_start_panama()
     result = await session.execute(
         select(Visit)
         .where(Visit.check_in >= today_start)
@@ -238,9 +237,7 @@ async def get_visit(visit_id: int, session: SessionDep):
 
 @router.get("/stats/summary")
 async def get_stats(session: SessionDep):
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    today_start = today_start_panama()
 
     total_result = await session.execute(select(func.count(Visit.id)))
     total_visits = total_result.scalar() or 0
@@ -304,7 +301,7 @@ async def check_in(payload: CheckInRequest, session: SessionDep):
         purpose=payload.purpose,
         buildings_visited=buildings_str,
         uadm_visited=uadms_str,
-        check_in=datetime.now(timezone.utc),
+        check_in=now_panama(),
         user_created=user_login,
     )
     session.add(visit)
@@ -344,7 +341,7 @@ async def check_out(visit_id: int, session: SessionDep, user: CurrentUser):
     )
     visitor = visitor_result.scalars().first()
 
-    visit.check_out = datetime.now(timezone.utc)
+    visit.check_out = now_panama()
     session.add(visit)
     
     username = user.login if user else "sysadmin"

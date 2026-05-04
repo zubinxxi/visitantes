@@ -1,7 +1,7 @@
 Correcciones y reglas:
 1. en la página de Check-In de Visitantes, los campos company_represents y purpose, deben ir en el formuladio Confirmar Check-In, quitar del formulario de Registrar Nuevo Visitante
 
-2. campos vue-multiselect están mostrando un json, deben mostrat el label, no el value ya que el valuese debe guardar en la base de datos, y que utilice los colores de la plantilla.
+2. campos vue-multiselect están mostrando un json, deben mostrat el label, no el value ya que el value se debe guardar en la base de datos, y que utilice los colores de la plantilla.
 
 3. al imprimir las etiquetas, la página se imprimen en tamaño a4 y eso es un error, la hoja de impresión debe ajustarce al tamaño de la etiqueta, para que la impresora de etiqueta no imprima mas etiquetas de lo esperado.
 

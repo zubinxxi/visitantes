@@ -46,7 +46,59 @@ watch(
 )
 
 function handlePrint() {
-  window.print()
+  const width = props.labelWidth || defaultLabelWidth
+  const height = props.labelHeight || defaultLabelHeight
+  
+  const badgesContainer = document.querySelector('.print-badges-wrapper')
+  if (!badgesContainer) return
+  
+  const badgesHTML = badgesContainer.innerHTML
+  
+  const printHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Gafetes de Visitantes</title>
+      <style>
+        @page { size: ${width}px ${height}px; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; min-height: auto; }
+        .print-badges-wrapper { display: flex; flex-direction: column; gap: 0; }
+        .visitor-badge { width: ${width}px; height: ${height}px; page-break-after: auto; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { border: 1px solid #000; padding: 4px; }
+        .bg-black, [style*="background-color: rgb(0, 0, 0)"], [style*="backgroundColor: black"] { background-color: #000 !important; color: #fff !important; }
+        .bg-gray-200 { background-color: #e5e7eb !important; }
+        .w-full { width: 100%; }
+        .p-2 { padding: 8px; }
+        .text-center { text-align: center; }
+        .text-xs { font-size: 10px; }
+        .text-sm { font-size: 12px; }
+        .text-lg { font-size: 16px; }
+        .font-bold { font-weight: bold; }
+        .uppercase { text-transform: uppercase; }
+        div[class*="rounded"] { border-radius: 0; }
+        .p-4, .p-3, .p-2, .p-1 { padding: 4px; }
+      </style>
+    </head>
+    <body>
+      ${badgesHTML}
+    </body>
+    </html>
+  `
+  
+  const printWindow = window.open('', '_blank')
+  if (!printWindow) return
+  
+  printWindow.document.write(printHTML)
+  printWindow.document.close()
+  
+  printWindow.onload = () => {
+    printWindow.focus()
+    printWindow.print()
+    printWindow.close()
+  }
 }
 
 function handleClose() {
@@ -102,26 +154,26 @@ function getVisitorName(visit: Visit): string {
 
           <!-- Content -->
           <div class="flex-1 overflow-y-auto p-6 badge-preview-container">
-            <div v-if="hasVisits" class="flex flex-wrap gap-6 justify-center print-badges-wrapper">
-              <VisitorBadge
-                v-for="visit in visits"
-                :key="visit.id"
-                :visit-id="visit.id"
-                :visitor-name="getVisitorName(visit)"
-                :id-card-number="visit.id_card_number"
-                :check-in="visit.check_in"
-                :uadms="visit.uadms_names || ''"
-                :buildings="visitBuildings(visit)"
-                :label-width="labelWidth || defaultLabelWidth"
-                :label-height="labelHeight || defaultLabelHeight"
-              />
-            </div>
-            <div v-else class="flex flex-col items-center justify-center py-16 text-gray-500">
-              <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              <p class="text-base font-medium">No hay gafetes para mostrar</p>
-              <p class="text-theme-sm">Selecciona visitantes para imprimir sus gafetes</p>
+            <div class="print-badges-wrapper">
+              <div v-for="visit in visits" :key="visit.id" class="visitor-badge">
+                <VisitorBadge
+                  :visit-id="visit.id"
+                  :visitor-name="getVisitorName(visit)"
+                  :id-card-number="visit.id_card_number"
+                  :check-in="visit.check_in"
+                  :uadms="visit.uadms_names || ''"
+                  :buildings="visitBuildings(visit)"
+                  :label-width="labelWidth || defaultLabelWidth"
+                  :label-height="labelHeight || defaultLabelHeight"
+                />
+              </div>
+              <div v-if="!hasVisits" class="flex flex-col items-center justify-center py-16 text-gray-500">
+                <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <p class="text-base font-medium">No hay gafetes para mostrar</p>
+                <p class="text-theme-sm">Selecciona visitantes para imprimir sus gafetes</p>
+              </div>
             </div>
           </div>
         </div>
@@ -132,35 +184,8 @@ function getVisitorName(visit: Visit): string {
 
 <style scoped>
 @media print {
-  .print-modal {
-    position: static !important;
-    background: none !important;
-    backdrop-filter: none !important;
-    padding: 0 !important;
-    display: block !important;
-  }
-
-  .print-container {
-    max-height: none !important;
-    border: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-  }
-
   .no-print {
     display: none !important;
-  }
-
-  .badge-preview-container {
-    padding: 0 !important;
-    overflow: visible !important;
-  }
-
-  .print-badges-wrapper {
-    gap: 0 !important;
-    justify-content: flex-start !important;
-    flex-direction: column !important;
-    align-items: center !important;
   }
 }
 </style>

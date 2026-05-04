@@ -11,7 +11,7 @@ El modelo DEBE regirse estrictamente por los estándares y mejores prácticas de
 
 - **Backend (FastAPI):** Referenciar siempre [https://fastapi.tiangolo.com/es/](https://fastapi.tiangolo.com/es/). Priorizar el uso de Pydantic v2 y tipado estático (Type Hints).
 - **Frontend (Vue.js 3):** Referenciar [https://vuejs.org/guide/quick-start.html](https://vuejs.org/guide/quick-start.html). Utilizar **Composition API** y la sintaxis `<script setup>`.
-- **Diseño y UI (TailAdmin):** Seguir la estructura de componentes y clases de Tailwind CSS basadas en [https://vue-demo.tailadmin.com/], (https://vue-multiselect.js.org/), (https://vue-demo.tailadmin.com/).
+- **Diseño y UI (TailAdmin):** Seguir la estructura de componentes y clases de Tailwind CSS basadas en [https://vue-demo.tailadmin.com/], [https://vue-multiselect.js.org/], (https://vue-demo.tailadmin.com/), (https://vue-multiselect.js.org/).
 
 ## 3. Restricciones Técnicas del Entorno
 - Sistema Operativo: **Debian 13**.

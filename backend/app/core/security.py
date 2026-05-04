@@ -1,11 +1,12 @@
 import bcrypt
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from jose import JWTError, jwt
 
 from app.core.config import settings
+from app.core.utils import now_panama
 
 
 def hash_password(password: str) -> str:
@@ -23,7 +24,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(subject: str, name: str = "", role: str = "", expires_delta: Optional[timedelta] = None) -> str:
-    expire = datetime.now(timezone.utc) + (
+    expire = now_panama() + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode = {"sub": subject, "exp": expire}

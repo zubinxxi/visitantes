@@ -77,10 +77,10 @@ if(!empty({vs})){
 			<div class="uadm-text">
 				<?php
 
-				foreach ($uadm_visited_array as $uadm){
-					sc_lookup(uadm_data, "select nombre from unidades_administrativas_bienes where id = '$uadm' limit 1", "conn_mariadb_1");
-					if(!empty({uadm_data})) echo "• " . {uadm_data[0][0]} . "<br>";
-				}
+					foreach ($uadm_visited_array as $uadm){
+						sc_lookup(uadm_data, "select nombre from unidades_administrativas_bienes where id = '$uadm' limit 1", "conn_mariadb_1");
+						if(!empty({uadm_data})) echo "• " . {uadm_data[0][0]} . "<br>";
+					}
 				?>
 			</div>
 
