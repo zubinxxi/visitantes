@@ -35,6 +35,12 @@ No es monorepo; cada carpeta es un proyecto independiente.
 - Fase 4 (Impresión de etiquetas térmicas) pendiente
 - Usuarios de prueba: `sysadmin`, `admindemo`, `usuariodemo` (pass: `123456`)
 
+## Impresora de Stickers
+- Modelo: 168BT/168
+- Descargas y videos: https://jadens.com/pages/jd168-download-and-video
+- Manual de usuario: https://cdn.shopify.com/s/files/1/0574/8742/5675/files/JD-168BT_User_Manual.pdf?v=1753157306
+- Guía de app: https://cdn.shopify.com/s/files/1/0574/8742/5675/files/JD-168BT_APP_Guidance_Card.pdf?v=1753157313
+
 ## Referencias
 - `backend/README.md` — Documentación completa API
 - `PLAN.md` — Fases y endpoints
