@@ -88,7 +88,7 @@ async function handleLogin() {
                     type="text"
                     id="login"
                     name="login"
-                    placeholder="sysadmin"
+                    placeholder="Ingresa tu usuario"
                     class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
                     required
                     autocomplete="username"
