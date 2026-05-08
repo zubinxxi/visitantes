@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 import api from '@/lib/api'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import VisitorBadge from '@/components/VisitorBadge.vue'
+import BadgePrintPreview from '@/components/BadgePrintPreview.vue'
+import { LABEL_SIZES, type LabelSize } from '@/types/labelSize'
+import type { Visit } from '@/types/visit'
 import Multiselect from 'vue-multiselect'
 
-const router = useRouter()
-const { success, error: showError, info } = useToast()
+const { success, error: showError } = useToast()
 const auth = useAuthStore()
 
 interface ParsedVisitor {
@@ -42,15 +43,13 @@ interface Building {
   description: string
 }
 
-interface LabelSize {
-  value: string
-  label: string
-  width: number
-  height: number
-}
+const labelSizes: readonly LabelSize[] = LABEL_SIZES
+const defaultSize: LabelSize = LABEL_SIZES[0] as LabelSize
+const selectedLabelSize = ref<LabelSize>({ ...defaultSize })
 
 const loading = ref(false)
 const scanning = ref(false)
+const processingQr = ref(false)
 const qrInput = ref('')
 const qrScanned = ref(false)
 const needsRegistration = ref(false)
@@ -58,7 +57,9 @@ const currentVisitor = ref<Visitor | null>(null)
 const currentVisit = ref<{ id: number; check_in: string } | null>(null)
 const parsedData = ref<ParsedVisitor | null>(null)
 const showBadge = ref(false)
+const showBadgeModal = ref(false)
 const badgeData = ref<any>(null)
+const badgeVisit = ref<Visit | null>(null)
 const confirmCompanyRepresents = ref('')
 const confirmPurpose = ref('')
 
@@ -89,15 +90,6 @@ const buildingSelectRef = ref<any>(null)
 function onSelect(ref: any) {
   setTimeout(() => ref.close(), 0)
 }
-
-const labelSizes: LabelSize[] = [
-  { value: '105x76', label: '105x76mm (vertical)', width: 397, height: 287 },
-  { value: '76x105', label: '76x105mm (horizontal)', width: 287, height: 397 },
-  { value: '2x4', label: '2" x 4"', width: 192, height: 384 },
-  { value: '4x2', label: '4" x 2"', width: 384, height: 192 },
-]
-const defaultSize: LabelSize = { value: '105x76', label: '105x76mm (vertical)', width: 397, height: 287 }
-const selectedLabelSize = ref<LabelSize>(defaultSize)
 
 const showRegisterForm = ref(false)
 const registerForm = ref({
@@ -162,6 +154,8 @@ async function startCamera() {
 }
 
 async function handleQrInput(event: Event) {
+  if (processingQr.value) return
+  
   const value = (event.target as HTMLInputElement).value
   if (!value) return
   
@@ -169,11 +163,15 @@ async function handleQrInput(event: Event) {
     return
   }
   
+  processingQr.value = true
   qrInput.value = value
   qrScanned.value = true
-  await processQr(value)
-  
-  qrInput.value = ''
+  try {
+    await processQr(value)
+  } finally {
+    qrInput.value = ''
+    processingQr.value = false
+  }
 }
 
 async function processQr(rawData: string) {
@@ -212,6 +210,7 @@ async function processQr(rawData: string) {
   } catch (e: any) {
     console.error('Error processing QR:', e)
     showError(e.message || 'Error al procesar QR')
+    resetForm()
   } finally {
     loading.value = false
   }
@@ -353,7 +352,23 @@ function confirmCheckIn() {
   .then(async () => {
     const badgeRes = await api.get(`/checkin/visits/${currentVisit.value!.id}/badge`)
     badgeData.value = badgeRes.data
-    showBadge.value = true
+    badgeVisit.value = {
+      id: currentVisit.value!.id,
+      id_visitors: currentVisitor.value!.id,
+      id_type_of_proce: 6,
+      company_represents: confirmCompanyRepresents.value,
+      purpose: confirmPurpose.value,
+      buildings_visited: selectedBuildings.value.map((b: any) => b.id).join(','),
+      uadm_visited: selectedUadms.value.map((u: any) => u.id).join(';'),
+      check_in: currentVisit.value!.check_in,
+      check_out: null,
+      user_created: auth.user?.login || 'sysadmin',
+      names: currentVisitor.value!.names,
+      surnames: currentVisitor.value!.surnames,
+      id_card_number: currentVisitor.value!.id_card_number,
+      uadms_names: selectedUadms.value.map((u: any) => u.name).join(';'),
+    }
+    showBadgeModal.value = true
     success('Check-in confirmado')
   })
   .catch((e: any) => {
@@ -367,52 +382,74 @@ function confirmCheckIn() {
 function printBadge() {
   const printContent = document.querySelector('.visitor-badge-print-container')?.innerHTML
   if (!printContent) return
-  
-  const width = selectedLabelSize.value?.width || 397
-  const height = selectedLabelSize.value?.height || 287
-  
-  const printHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Badge de Visitante</title>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-      <style>
-        @page { size: ${width}px ${height}px; margin: 0; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
-        table { border-collapse: collapse; width: 100%; }
-        td, th { border: 1px solid #000; padding: 4px; }
-        .bg-black { background-color: #000 !important; color: #fff !important; }
-        .bg-gray-200 { background-color: #e5e7eb !important; }
-        .w-full { width: 100%; }
-        .p-2 { padding: 8px; }
-        .text-center { text-align: center; }
-        .text-xs { font-size: 10px; }
-        .text-sm { font-size: 12px; }
-        .text-lg { font-size: 16px; }
-        .font-bold { font-weight: bold; }
-        .uppercase { text-transform: uppercase; }
-      </style>
-    </head>
-    <body style="width: ${width}px; height: ${height}px;">
-      ${printContent}
-    </body>
-    </html>
+
+  const size = selectedLabelSize.value
+  const width = size?.width || 101.6
+  const height = size?.height || 76.2
+
+  const printCSS = `
+    @page { size: ${width}mm ${height}mm; margin: 0; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html { height: auto; margin: 0; padding: 0; }
+    body {
+      margin: 0; padding: 0; height: auto; min-height: 0; overflow: hidden;
+      font-family: 'Arial', sans-serif;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #000; padding: 4px; }
+    .bg-black { background-color: #000 !important; color: #fff !important; }
+    .bg-white { background-color: #fff !important; }
+    .bg-gray-200 { background-color: #e5e7eb !important; }
+    .flex { display: flex; }
+    .flex-row { flex-direction: row; }
+    .flex-col { flex-direction: column; }
+    .flex-1 { flex: 1 1 0%; }
+    .h-full { height: 100%; }
+    .items-center { align-items: center; }
+    .justify-center { justify-content: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-0.5 { gap: 2px; }
+    .gap-1 { gap: 4px; }
+    .mt-auto { margin-top: auto; }
+    .w-full { width: 100%; }
+    .p-1.5 { padding: 6px; }
+    .p-2 { padding: 8px; }
+    .p-3 { padding: 12px; }
+    .px-1 { padding-left: 4px; padding-right: 4px; }
+    .text-center { text-align: center; }
+    .text-gray-900 { color: #111827; }
+    .font-bold { font-weight: bold; }
+    .uppercase { text-transform: uppercase; }
+    .overflow-hidden { overflow: hidden; }
+    .writing-mode-vertical { writing-mode: vertical-rl; text-orientation: mixed; }
   `
-  
+
+  const printHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Badge de Visitante</title>
+  <style>${printCSS}</style>
+</head>
+<body>${printContent}</body>
+</html>`
+
   const printWindow = window.open('', '_blank')
   if (!printWindow) return
-  
+
   printWindow.document.write(printHTML)
   printWindow.document.close()
-  
+
   printWindow.onload = () => {
     printWindow.focus()
     printWindow.print()
     printWindow.close()
   }
+}
+
+function handleNewCheckin() {
+  showBadgeModal.value = false
+  resetForm()
 }
 
 function resetForm() {
@@ -424,9 +461,13 @@ function resetForm() {
   parsedData.value = null
   showRegisterForm.value = false
   showBadge.value = false
+  showBadgeModal.value = false
   badgeData.value = null
+  badgeVisit.value = null
   selectedUadms.value = []
   selectedBuildings.value = []
+  confirmCompanyRepresents.value = ''
+  confirmPurpose.value = ''
   stopCamera()
 }
 
@@ -756,8 +797,7 @@ onBeforeUnmount(() => {
           :check-in="badgeData.check_in"
           :uadms="badgeData.uadms"
           :buildings="badgeData.buildings"
-          :label-width="selectedLabelSize?.width"
-          :label-height="selectedLabelSize?.height"
+          :label-type="selectedLabelSize?.value"
         />
       </div>
       
@@ -769,36 +809,41 @@ onBeforeUnmount(() => {
           Imprimir Badge
         </button>
         <button
-          @click="resetForm"
+          @click="handleNewCheckin"
           class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs"
         >
           Nueva Visita
         </button>
       </div>
     </div>
+
+    <BadgePrintPreview
+      v-model="showBadgeModal"
+      :visits="badgeVisit ? [badgeVisit] : []"
+      close-label="Nueva Visita"
+      @close="handleNewCheckin"
+    />
   </div>
 </template>
 
 <style scoped>
-@page {
-  size: auto;
-  margin: 0;
-}
-
 @media print {
   .no-print {
     display: none !important;
   }
-  
+
   body {
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
-  
+
   body > *:not(.visitor-badge-print-container) {
     display: none !important;
   }
-  
+
   .visitor-badge-print-container {
     position: absolute;
     left: 0;

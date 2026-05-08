@@ -2,25 +2,27 @@
 import { ref, computed, watch } from 'vue'
 import type { Visit } from '@/types/visit'
 import VisitorBadge from '@/components/VisitorBadge.vue'
+import { LABEL_SIZES, type LabelSize } from '@/types/labelSize'
 
 interface Props {
   modelValue: boolean
   visits: Visit[]
-  labelWidth?: number
-  labelHeight?: number
+  closeLabel?: string
 }
 
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
+  (e: 'close'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  closeLabel: 'Cerrar',
+})
+
 const emit = defineEmits<Emits>()
 
 const isLoaded = ref(false)
-
-const defaultLabelWidth = 397
-const defaultLabelHeight = 287
+const selectedLabelSize = ref<LabelSize>({ ...LABEL_SIZES[0] } as LabelSize)
 
 const hasVisits = computed(() => props.visits.length > 0)
 
@@ -46,54 +48,78 @@ watch(
 )
 
 function handlePrint() {
-  const width = props.labelWidth || defaultLabelWidth
-  const height = props.labelHeight || defaultLabelHeight
-  
+  const size = selectedLabelSize.value
+  const width = size.width
+  const height = size.height
+
   const badgesContainer = document.querySelector('.print-badges-wrapper')
   if (!badgesContainer) return
-  
+
   const badgesHTML = badgesContainer.innerHTML
-  
-  const printHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Gafetes de Visitantes</title>
-      <style>
-        @page { size: ${width}px ${height}px; margin: 0; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        body { margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; min-height: auto; }
-        .print-badges-wrapper { display: flex; flex-direction: column; gap: 0; }
-        .visitor-badge { width: ${width}px; height: ${height}px; page-break-after: auto; }
-        table { border-collapse: collapse; width: 100%; }
-        td, th { border: 1px solid #000; padding: 4px; }
-        .bg-black, [style*="background-color: rgb(0, 0, 0)"], [style*="backgroundColor: black"] { background-color: #000 !important; color: #fff !important; }
-        .bg-gray-200 { background-color: #e5e7eb !important; }
-        .w-full { width: 100%; }
-        .p-2 { padding: 8px; }
-        .text-center { text-align: center; }
-        .text-xs { font-size: 10px; }
-        .text-sm { font-size: 12px; }
-        .text-lg { font-size: 16px; }
-        .font-bold { font-weight: bold; }
-        .uppercase { text-transform: uppercase; }
-        div[class*="rounded"] { border-radius: 0; }
-        .p-4, .p-3, .p-2, .p-1 { padding: 4px; }
-      </style>
-    </head>
-    <body>
-      ${badgesHTML}
-    </body>
-    </html>
+
+  const printCSS = `
+    @page { size: ${width}mm ${height}mm; margin: 0; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html { height: auto; margin: 0; padding: 0; }
+    body {
+      margin: 0; padding: 0; height: auto; min-height: 0; overflow: hidden;
+      font-family: 'Arial', sans-serif;
+    }
+    .print-badges-wrapper { display: flex; flex-direction: column; gap: 0; }
+    .visitor-badge {
+      page-break-after: avoid; break-inside: avoid;
+      overflow: hidden;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #000; padding: 4px; }
+    .bg-black, [style*="background-color: rgb(0, 0, 0)"], [style*="backgroundColor: black"] { background-color: #000 !important; color: #fff !important; }
+    .bg-white { background-color: #fff !important; }
+    .bg-gray-200 { background-color: #e5e7eb !important; }
+    .bg-gray-100 { background-color: #f5f5f5 !important; }
+    .flex { display: flex; }
+    .flex-row { flex-direction: row; }
+    .flex-col { flex-direction: column; }
+    .flex-1 { flex: 1 1 0%; }
+    .h-full { height: 100%; }
+    .items-center { align-items: center; }
+    .justify-center { justify-content: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-0\\.5 { gap: 2px; }
+    .gap-1 { gap: 4px; }
+    .mt-auto { margin-top: auto; }
+    .mt-1\\.5 { margin-top: 6px; }
+    .w-full { width: 100%; }
+    .p-1\\.5 { padding: 6px; }
+    .p-2 { padding: 8px; }
+    .p-3 { padding: 12px; }
+    .px-1 { padding-left: 4px; padding-right: 4px; }
+    .text-center { text-align: center; }
+    .text-xs { font-size: 10px; }
+    .text-sm { font-size: 12px; }
+    .text-lg { font-size: 16px; }
+    .text-gray-900 { color: #111827; }
+    .font-bold { font-weight: bold; }
+    .uppercase { text-transform: uppercase; }
+    div[class*="rounded"] { border-radius: 0; }
+    .overflow-hidden { overflow: hidden; }
   `
-  
+
+  const printHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gafetes de Visitantes</title>
+  <style>${printCSS}</style>
+</head>
+<body>${badgesHTML}</body>
+</html>`
+
   const printWindow = window.open('', '_blank')
   if (!printWindow) return
-  
+
   printWindow.document.write(printHTML)
   printWindow.document.close()
-  
+
   printWindow.onload = () => {
     printWindow.focus()
     printWindow.print()
@@ -103,6 +129,7 @@ function handlePrint() {
 
 function handleClose() {
   emit('update:modelValue', false)
+  emit('close')
 }
 
 function getVisitorName(visit: Visit): string {
@@ -125,7 +152,6 @@ function getVisitorName(visit: Visit): string {
         class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 print-modal"
       >
         <div class="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xl flex flex-col print-container">
-          <!-- Header (solo visible en pantalla) -->
           <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4 no-print">
             <div>
               <h3 class="text-base font-medium text-gray-800 dark:text-white">Vista Previa de Gafetes</h3>
@@ -134,6 +160,14 @@ function getVisitorName(visit: Visit): string {
               </p>
             </div>
             <div class="flex items-center gap-3">
+              <select
+                v-model="selectedLabelSize"
+                class="h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs cursor-pointer"
+              >
+                <option v-for="size in LABEL_SIZES" :key="size.value" :value="size">
+                  {{ size.label }}
+                </option>
+              </select>
               <button
                 @click="handlePrint"
                 class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 flex items-center gap-2"
@@ -147,14 +181,13 @@ function getVisitorName(visit: Visit): string {
                 @click="handleClose"
                 class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-800"
               >
-                Cerrar
+                {{ closeLabel }}
               </button>
             </div>
           </div>
 
-          <!-- Content -->
           <div class="flex-1 overflow-y-auto p-6 badge-preview-container">
-            <div class="print-badges-wrapper">
+            <div class="print-badges-wrapper flex flex-col items-center gap-4">
               <div v-for="visit in visits" :key="visit.id" class="visitor-badge">
                 <VisitorBadge
                   :visit-id="visit.id"
@@ -163,8 +196,7 @@ function getVisitorName(visit: Visit): string {
                   :check-in="visit.check_in"
                   :uadms="visit.uadms_names || ''"
                   :buildings="visitBuildings(visit)"
-                  :label-width="labelWidth || defaultLabelWidth"
-                  :label-height="labelHeight || defaultLabelHeight"
+                  :label-type="selectedLabelSize.value"
                 />
               </div>
               <div v-if="!hasVisits" class="flex flex-col items-center justify-center py-16 text-gray-500">

@@ -1,6 +1,7 @@
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlmodel import SQLModel
 
 from app.core.config import settings
 
@@ -11,12 +12,13 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", settings.sync_database_url)
 
-from app.models.security import SecGroup, SecApp, SecUser, SecUserGroupLink, SecGroupApp
+from app.models.config import Config
 from app.models.maintenance import Province, Institution, TypeUadm, Building, TypeOfProcedure, Uadm
+from app.models.security import SecGroup, SecApp, SecUser, SecUserGroupLink, SecGroupApp
 from app.models.visitor import Visitor
 from app.models.visit import Visit, VisitsUadmLink, VisitsBuildingsLink
 
-target_metadata = None
+target_metadata = SQLModel.metadata
 
 
 def run_migrations_offline() -> None:

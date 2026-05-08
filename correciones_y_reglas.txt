@@ -1,39 +1,17 @@
 Correcciones y reglas:
-1. en la página de Check-In de Visitantes, los campos company_represents y purpose, deben ir en el formuladio Confirmar Check-In, quitar del formulario de Registrar Nuevo Visitante
-
-2. campos vue-multiselect están mostrando un json, deben mostrat el label, no el value ya que el value se debe guardar en la base de datos, y que utilice los colores de la plantilla.
 
 3. al imprimir las etiquetas, la página se imprimen en tamaño a4 y eso es un error, la hoja de impresión debe ajustarce al tamaño de la etiqueta, para que la impresora de etiqueta no imprima mas etiquetas de lo esperado.
 
-4. en el dashboad, debe haber un enlace rápido a una pagina de checkout, la cual debe tener el input de captura de qr, para hacer el checkout del visitante, el mismo debe notificar en pantalla la salida y retornar al dashboard.
 
-5. el dashboard no se está actualizando con la información real, se debe corregir las cards y el apartado de ultimas visitas.
-
-6. en la págian historial de visitas el apartado donde esta el input de busqueda, el select de estado, la fecha y el boton de filtrar, debe estar bien distribuído, todos los inputs deben ser del mismo ancho, menos el botón  de filtrar y se debe corregir el filtrado ya que no está filtrando correctamente.
-
-7. se debe usar vue-multiselect en el formulario de visitante (nuevo/editar), campos genero (selección única) y campo provincia (selección multiple), para que se mantenga el mismo diseño en todo el sistema.
-
-8. en el formulario de usuarios (nueo/editar), se debe usar vue-multiselect para los campos de selección deben mostrar el label, no el value ya que el value (Y o N) se debe guardar en la base de datos. también se debe agregar un input vue-multiselect (selección multiple), para agregar los grupos a los que pertenece el usuario, pueden ser uno o muchos, para eso está la tabla  sec_users_groups.
-
-9. el formulario de unidades administrativas tambien debe usar vue-multiselect para los campos id_institution, id_province, id_district, id_district_subdivision, id_type_uadm, id_uadm_origin ya que existen tablas que son los catalogos.
-
-10. cambiar los label "Tipos de Procedimientos", por "Tipo de Trámite".
-
-11. crear un módulo de seguridad para asignación de permisos por grupos de usuarios, donde los usuarios miembros de un grupo puedan acceder a las diferentes páginas y menus del sistema, mediante checkbox pueda asignar permisos de accseso, crear, editar, borrar, imprimir, exportar, para cada crud o página. Si un usuario no tiene permiso para acceder a páginas o crud, se dbe ocultar del menú principal o de  el menú de mantenimiento.
+11. crear un módulo de seguridad para asignación de permisos por grupos de usuarios, donde los usuarios miembros de un grupo puedan acceder a las diferentes páginas y menus del sistema, que mediante checkbox pueda asignar permisos de accseso, crear, editar, borrar, imprimir, exportar, para cada crud o página. Si un usuario miembro de un grupo que no tiene permiso para acceder a páginas o crud, se dbe ocultar del menú principal o de  el menú de mantenimiento.
 - los miembros del grupo administrador tienen todos los permisos.
 - los miembros del grupo usuarios tiene acceso a ver el dashboard, editar su perfil.
 - los miembros del grupo seguridad tienen permisos para ver el dashboard, ver, agregar, editar, borrar visitantes. también ver el historial de visitas, ver, agregar visitas (checkin), dar salidas (checkout), ver las visitas activas.
 - los miembros del grupo Admin-Seguridad, tienen los mismos permisos que el grupo seguridad, más el permiso para ver, crear, editar, borrar usuarios del sistema, pero no puede crear, editar ni borrar a los miembros del grupo administrador.
 - debe haber una página que muestre los usuarios miembros de el grupo seleccionado a trabes de un  vue-multiselect (de seleccion unica), solo debe ser visible por los miembros de los grupos administrador y 	Admin-Seguridad.
 
-12. en el sidebar, en la parte inferior donde esta la seccion del usuario, donde está apareciendo la palabra Usuario, debajo del nombre del usuario, debe mostrar el correo del usuario logueado.
-
-13. todo el sitema debe mantener el diseño de la plantilla https://vue-demo.tailadmin.com/
-
-14. todo el proyecto debe ser responsivo.
-
 15. en la base de datos hay una tabla "config", que puedes modificar para ajustarla y asosiarla a una página para las configuraciones del sistema, la misma puedes agregarla al menú del usuarioo que esta en el header y que sólo los miembros del grupo administrador puedan manipularla.
 
- 16. quitar del header el icono de la campana de notificaciones ya que no se usa.
+
 
 

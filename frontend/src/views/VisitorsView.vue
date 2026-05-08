@@ -4,7 +4,6 @@ import api from '@/lib/api'
 import type { Visitor } from '@/types/visit'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
-import SearchableSelectSingle from '@/components/SearchableSelectSingle.vue'
 import Multiselect from 'vue-multiselect'
 
 const toast = useToast()
@@ -61,10 +60,10 @@ const provinceOptions = ref<{ value: string; label: string }[]>([])
 
 async function loadProvinces(search?: string) {
   try {
-    const params: Record<string, any> = { limit: 100 }
+    const params: Record<string, unknown> = { limit: 100 }
     if (search) params.search = search
     const response = await api.get('/maintenance/provinces', { params })
-    provinceOptions.value = response.data.items.map((p: any) => ({
+    provinceOptions.value = response.data.items.map((p: Record<string, unknown>) => ({
       value: p.name,
       label: p.name
     }))
@@ -77,7 +76,7 @@ function searchProvince(query: string) {
   loadProvinces(query)
 }
 
-const form = ref({
+const form = ref<Record<string, unknown>>({
   names: '',
   surnames: '',
   gender: '',
@@ -87,6 +86,9 @@ const form = ref({
   nationality: '',
   photo: '',
 })
+
+const formPhoto = computed(() => typeof form.value.photo === 'string' ? form.value.photo : '')
+const formNames = computed(() => typeof form.value.names === 'string' ? form.value.names : '')
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -182,15 +184,23 @@ function openCreate() {
   loadProvinces()
 }
 
+function getGenderObject(value: string) {
+  return genderOptions.find(g => g.value === value) || null
+}
+
+function getProvinceObject(value: string) {
+  return provinceOptions.value.find(p => p.value === value) || null
+}
+
 function openEdit(visitor: Visitor) {
   editingVisitor.value = visitor
   form.value = {
     names: visitor.names || '',
     surnames: visitor.surnames || '',
-    gender: visitor.gender || '',
+    gender: getGenderObject(visitor.gender || '') as { value: string; label: string } | null,
     id_card_number: visitor.id_card_number || '',
     id_num_control: visitor.id_num_control || '',
-    province: visitor.province || '',
+    province: getProvinceObject(visitor.province || '') as { value: string; label: string } | null,
     nationality: visitor.nationality || '',
     photo: visitor.photo || '',
   }
@@ -222,9 +232,10 @@ async function deleteVisitor(visitor: Visitor) {
     await api.delete(`/visitors/${visitor.id}`)
     toast.success('Visitante eliminado correctamente')
     listAll()
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting visitor:', error)
-    toast.error(error.response?.data?.detail || 'Error al eliminar visitante')
+    const errMsg = error instanceof Error ? error.message : 'Error al eliminar visitante'
+    toast.error(errMsg)
   }
 }
 
@@ -281,6 +292,10 @@ function toggleCamera() {
   }
 }
 
+function getPhotoString(): string {
+  return typeof form.value.photo === 'string' ? form.value.photo : ''
+}
+
 function dataURLtoFile(dataurl: string, filename: string): File {
   const arr = dataurl.split(',')
   const firstPart = arr[0] || ''
@@ -296,9 +311,10 @@ function dataURLtoFile(dataurl: string, filename: string): File {
 }
 
 async function uploadPhotoWithCedula(cedula: string): Promise<string | null> {
-  if (!form.value.photo || !form.value.photo.startsWith('data:')) return null
+  const photoStr = getPhotoString()
+  if (!photoStr || !photoStr.startsWith('data:')) return null
 
-  const file = dataURLtoFile(form.value.photo, `${cedula}.jpg`)
+  const file = dataURLtoFile(photoStr, `${cedula}.jpg`)
   const formData = new FormData()
   formData.append('file', file)
 
@@ -314,7 +330,8 @@ async function uploadPhotoWithCedula(cedula: string): Promise<string | null> {
 }
 
 async function saveVisitor() {
-  if (!form.value.photo) {
+  const photoStr = getPhotoString()
+  if (!photoStr) {
     photoRequired.value = true
     toast.error('La foto es obligatoria')
     return
@@ -326,10 +343,10 @@ async function saveVisitor() {
   }
 
 try {
-    let photoUrl = form.value.photo
+    let photoUrl = photoStr
 
-    if (form.value.photo.startsWith('data:')) {
-      const uploadedUrl = await uploadPhotoWithCedula(form.value.id_card_number)
+    if (photoStr.startsWith('data:')) {
+      const uploadedUrl = await uploadPhotoWithCedula(String(form.value.id_card_number))
       if (!uploadedUrl) {
         toast.error('Error al subir la foto')
         return
@@ -337,13 +354,16 @@ try {
       photoUrl = uploadedUrl
     }
 
+        const genderValue = typeof form.value.gender === 'object' && form.value.gender ? String((form.value.gender as Record<string, string>).value || '') : String(form.value.gender || '')
+    const provinceValue = typeof form.value.province === 'object' && form.value.province ? String((form.value.province as Record<string, string>).value || '') : String(form.value.province || '')
+
     const payload = {
       names: form.value.names,
       surnames: form.value.surnames,
-      gender: form.value.gender,
+      gender: genderValue,
       id_card_number: form.value.id_card_number,
       id_num_control: form.value.id_num_control,
-      province: form.value.province,
+      province: provinceValue,
       nationality: form.value.nationality,
       photo: photoUrl,
       user_created: auth.user?.login || 'admin'
@@ -361,10 +381,10 @@ try {
     }
     closeForm()
     listAll()
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error saving visitor:', error)
-    const errorMessage = error.response?.data?.detail || error.message || 'Error al guardar visitante'
-    toast.error(errorMessage)
+    const errMsg = error instanceof Error ? error.message : 'Error al guardar visitante'
+    toast.error(errMsg)
   }
 }
 
@@ -666,8 +686,8 @@ onUnmounted(stopCamera)
                 <div v-if="!showCamera" class="relative w-48 h-48 rounded-full overflow-hidden border-2 border-gray-300 dark:border-gray-600 bg-gray-100">
                   <img 
                     v-if="form.photo" 
-                    :src="getPhotoUrl(form.photo)" 
-                    :alt="form.names"
+                    :src="getPhotoUrl(formPhoto)" 
+                    :alt="formNames"
                     class="w-full h-full object-cover"
                     @error="(e: Event) => (e.target as HTMLImageElement).src = ''"
                   />
@@ -692,7 +712,7 @@ onUnmounted(stopCamera)
                     type="button"
                     class="rounded-lg bg-brand-500 px-4 py-2 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
                   >
-                    {{ form.photo ? 'Actualizar Foto' : 'Tomar Foto' }}
+                    {{ formPhoto ? 'Actualizar Foto' : 'Tomar Foto' }}
                   </button>
                   <button
                     v-if="showCamera"
@@ -713,8 +733,8 @@ onUnmounted(stopCamera)
                 </div>
                 
                 <p v-if="photoRequired" class="text-sm text-error-500">La foto es obligatoria</p>
-                <p v-if="form.photo && !form.photo.startsWith('data:') && !showCamera" class="text-sm text-success-500">Foto guardada</p>
-                <p v-if="form.photo && form.photo.startsWith('data:')" class="text-sm text-yellow-500">Foto nueva lista para subir</p>
+                <p v-if="formPhoto && !formPhoto.startsWith('data:') && !showCamera" class="text-sm text-success-500">Foto guardada</p>
+                <p v-if="formPhoto && formPhoto.startsWith('data:')" class="text-sm text-yellow-500">Foto nueva lista para subir</p>
               </div>
             </div>
 
@@ -762,25 +782,33 @@ onUnmounted(stopCamera)
               <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
                 Género <span class="text-error-500">*</span>
               </label>
-              <SearchableSelectSingle
+              <Multiselect
                 v-model="form.gender"
                 :options="genderOptions"
-                placeholder="Seleccione género"
                 :searchable="false"
+                :close-on-select="true"
+                placeholder="Seleccione género"
+                label="label"
+                track-by="value"
+                class="multiselect-dark"
               />
             </div>
-
+            
             <!-- Province -->
             <div>
               <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
                 Provincia
               </label>
-              <SearchableSelectSingle
+              <Multiselect
                 v-model="form.province"
+                :options="provinceOptions"
+                :searchable="true"
+                :close-on-select="true"
                 placeholder="Seleccione provincia"
-                api-endpoint="/maintenance/provinces"
-                search-param="search"
-                :limit="50"
+                label="label"
+                track-by="value"
+                class="multiselect-dark"
+                @search-change="searchProvince"
               />
             </div>
 

@@ -11,7 +11,7 @@ from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
 from app.services.audit_service import ScLog
 from app.schemas.visit import VisitRead
-from app.core.utils import now_panama
+from app.core.utils import now_panama_naive
 
 
 class QrProcessRequest(BaseModel):
@@ -23,6 +23,17 @@ class QrProcessResponse(BaseModel):
     visitor_data: Optional[dict] = None
     visitor: Optional[dict] = None
     visit: Optional[dict] = None
+
+
+class RegisterRequest(BaseModel):
+    raw_data: str
+    photo: str = ""
+    names: str = ""
+    surnames: str = ""
+    gender: str = "M"
+    id_num_control: str = ""
+    province: str = ""
+    nationality: str = ""
 
 
 class ConfirmCheckInRequest(BaseModel):
@@ -48,7 +59,7 @@ router = APIRouter(prefix="/checkin", tags=["checkin"])
 
 def _build_log_entry(username: str, action: str, description: str) -> ScLog:
     return ScLog(
-        inserted_date=now_panama(),
+        inserted_date=now_panama_naive(),
         username=username,
         application="visitorsdb",
         creator=username,
@@ -104,6 +115,87 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
             needs_registration=True,
             visitor_data=parsed
         )
+
+    active_result = await session.execute(
+        select(Visit).where(
+            Visit.id_visitors == visitor.id,
+            Visit.check_out.is_(None)
+        )
+    )
+    existing_active = active_result.scalars().first()
+    if existing_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El visitante tiene una visita activa"
+        )
+
+    visit = Visit(
+        id_visitors=visitor.id,
+        id_type_of_proce=6,
+        company_represents="",
+        purpose="",
+        buildings_visited="",
+        uadm_visited="",
+        check_in=now_panama_naive(),
+        user_created=user.login,
+    )
+    session.add(visit)
+    await session.commit()
+    await session.refresh(visit)
+    
+    return QrProcessResponse(
+        needs_registration=False,
+        visitor={
+            "id": visitor.id,
+            "names": visitor.names,
+            "surnames": visitor.surnames,
+            "id_card_number": visitor.id_card_number,
+            "photo": visitor.photo,
+            "gender": visitor.gender,
+            "province": visitor.province,
+            "nationality": visitor.nationality
+        },
+        visit={
+            "id": visit.id,
+            "check_in": visit.check_in.isoformat() if visit.check_in else None
+        }
+    )
+
+
+@router.post("/register", response_model=QrProcessResponse)
+async def register_and_checkin(payload: RegisterRequest, session: SessionDep, user: CurrentUser):
+    parsed = _parse_qr_data(payload.raw_data)
+    
+    id_card_number = parsed["id_card_number"]
+    names = payload.names or parsed["names"]
+    surnames = payload.surnames or parsed["surnames"]
+    gender = payload.gender or parsed["gender"]
+    id_num_control = payload.id_num_control or parsed["id_num_control"]
+    province = payload.province or parsed["province"]
+    nationality = payload.nationality or parsed["nationality"]
+    
+    result = await session.execute(
+        select(Visitor).where(Visitor.id_card_number == id_card_number)
+    )
+    visitor = result.scalars().first()
+    
+    if visitor:
+        raise HTTPException(status_code=409, detail="El visitante ya existe")
+    
+    visitor = Visitor(
+        id_card_number=id_card_number,
+        names=names,
+        surnames=surnames,
+        gender=gender,
+        id_num_control=id_num_control,
+        province=province,
+        nationality=nationality,
+        photo=payload.photo,
+        user_created=user.login,
+    )
+    session.add(visitor)
+    await session.flush()
+    await session.refresh(visitor)
     
     visit = Visit(
         id_visitors=visitor.id,
@@ -112,11 +204,21 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
         purpose="",
         buildings_visited="",
         uadm_visited="",
-        check_in=now_panama(),
+        check_in=now_panama_naive(),
         user_created=user.login,
     )
     session.add(visit)
-    await session.flush()
+    
+    session.add(
+        _build_log_entry(
+            username=user.login,
+            action="CHECKIN",
+            description=f"Check-in - {names} {surnames}",
+        )
+    )
+    
+    await session.commit()
+    await session.refresh(visit)
     
     return QrProcessResponse(
         needs_registration=False,

@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Type, Optional
+from typing import Generic, TypeVar, Type, Optional, Any
 from fastapi import HTTPException, Query
 from sqlmodel import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,7 +115,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
             total_pages=total_pages,
         )
 
-    async def get_by_id(self, session: AsyncSession, item_id: int) -> ReadSchemaType:
+    async def get_by_id(self, session: AsyncSession, item_id: Any) -> ReadSchemaType:
         item = await session.get(self.model, item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -129,7 +129,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
         return self.read_schema.model_validate(db_obj)
 
     async def update(
-        self, session: AsyncSession, item_id: int, obj_in: UpdateSchemaType
+        self, session: AsyncSession, item_id: Any, obj_in: UpdateSchemaType
     ) -> ReadSchemaType:
         item = await session.get(self.model, item_id)
         if not item:
@@ -137,12 +137,11 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
         update_data = obj_in.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(item, key, value)
-        session.add(item)
         await session.commit()
         await session.refresh(item)
         return self.read_schema.model_validate(item)
 
-    async def delete(self, session: AsyncSession, item_id: int) -> dict:
+    async def delete(self, session: AsyncSession, item_id: Any) -> dict:
         item = await session.get(self.model, item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")

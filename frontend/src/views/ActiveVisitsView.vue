@@ -7,7 +7,7 @@ import { useBadgePrinter } from '@/composables/useBadgePrinter'
 import BadgePrintPreview from '@/components/BadgePrintPreview.vue'
 
 const { success, error: showError } = useToast()
-const { selectedVisits, toggleSelectVisit, isVisitSelected, clearSelection, printSelected } = useBadgePrinter()
+const { selectedVisits, toggleSelectVisit, isVisitSelected, clearSelection } = useBadgePrinter()
 
 const PANAMA_TZ = 'America/Panama'
 
@@ -205,6 +205,7 @@ onMounted(loadActive)
     <BadgePrintPreview
       v-model="showPrintPreview"
       :visits="selectedVisits"
+      close-label="Salir"
       @close="handlePrintPreviewClose"
     />
   </div>

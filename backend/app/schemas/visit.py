@@ -49,6 +49,13 @@ class VisitUpdate(BaseModel):
     building_ids: Optional[list[int]] = None
 
 
+class StatsSummary(BaseModel):
+    total_visits: int
+    active_visits: int
+    today_visits: int
+    unique_visitors: int
+
+
 class CheckInRequest(BaseModel):
     id_card_number: str
     names: str

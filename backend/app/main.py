@@ -4,11 +4,11 @@ from fastapi import FastAPI, Depends, APIRouter, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.database import get_session, async_engine
-from app.api.v1 import auth, visitors, visits, qr, checkin
+from app.api.deps import SessionDep
+from app.api.v1 import auth, visitors, visits, qr, checkin, config, security
 from app.api.v1.maintenance import MaintenanceCRUD, PaginatedResponse
 from app.models.maintenance import (
     Province, Institution, TypeUadm, Building, TypeOfProcedure, Uadm,
@@ -30,9 +30,7 @@ from app.schemas.security import (
 )
 from app.models.security import SecUser
 from app.core.security import hash_password
-
-SessionDep = AsyncSession
-
+ 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -75,10 +73,10 @@ def build_crud_router(prefix: str, crud: MaintenanceCRUD, read_model, create_sch
 
     @router.get("/", response_model=PaginatedResponse)
     async def get_all(
+        session: SessionDep,
         page: int = Query(1, ge=1, description="Número de página"),
         limit: int = Query(10, ge=1, le=1000, description="Registros por página"),
         search: str = Query(None, description="Texto de búsqueda"),
-        session: AsyncSession = Depends(get_session),
     ):
         return await crud.get_all(
             session, 
@@ -89,19 +87,19 @@ def build_crud_router(prefix: str, crud: MaintenanceCRUD, read_model, create_sch
         )
 
     @router.get("/{item_id}", response_model=read_model)
-    async def get_by_id(item_id: int, session: AsyncSession = Depends(get_session)):
+    async def get_by_id(session: SessionDep, item_id: int):
         return await crud.get_by_id(session, item_id)
 
     @router.post("/", response_model=read_model, status_code=201)
-    async def create_item(obj: create_schema = Body(), session: AsyncSession = Depends(get_session)):
+    async def create_item(session: SessionDep, obj: create_schema = Body()):
         return await crud.create(session, obj)
 
     @router.put("/{item_id}", response_model=read_model)
-    async def update_item(item_id: int, obj: update_schema = Body(), session: AsyncSession = Depends(get_session)):
+    async def update_item(session: SessionDep, item_id: int, obj: update_schema = Body()):
         return await crud.update(session, item_id, obj)
 
     @router.delete("/{item_id}")
-    async def delete_item(item_id: int, session: AsyncSession = Depends(get_session)):
+    async def delete_item(session: SessionDep, item_id: int):
         return await crud.delete(session, item_id)
 
     return router
@@ -114,7 +112,7 @@ maintenance_configs = [
     ("buildings", Building, BuildingCreate, BuildingUpdate, BuildingRead, ["description"]),
     ("procedures", TypeOfProcedure, TypeOfProcedureCreate, TypeOfProcedureUpdate, TypeOfProcedureRead, ["description"]),
     ("uadms", Uadm, UadmCreate, UadmUpdate, UadmRead, ["name", "initials", "province_name", "institution_name", "type_uadm_name"]),
-    ("groups", SecGroup, SecGroupCreate, SecGroupUpdate, SecGroupRead, ["name", "description"]),
+    ("groups", SecGroup, SecGroupCreate, SecGroupUpdate, SecGroupRead, ["description"]),
     ("apps", SecApp, SecAppCreate, SecAppUpdate, SecAppRead, ["name", "description"]),
     ("group_apps", SecGroupApp, SecGroupAppCreate, SecGroupAppUpdate, SecGroupAppRead, ["app_name"]),
 ]
@@ -131,40 +129,38 @@ users_router = APIRouter(prefix="/api/v1/maintenance/users", tags=["maintenance-
 
 @users_router.get("/", response_model=PaginatedResponse)
 async def get_all_users(
+    session: SessionDep,
     page: int = Query(1, ge=1, description="Número de página"),
     limit: int = Query(10, ge=1, le=1000, description="Registros por página"),
     search: str = Query(None, description="Texto de búsqueda"),
-    session: AsyncSession = Depends(get_session),
 ):
     return await users_crud.get_all(session, page=page, limit=limit, search=search, search_fields=["login", "name", "email"])
 
-
 @users_router.get("/{item_id}", response_model=SecUserRead)
-async def get_user_by_id(item_id: str, session: AsyncSession = Depends(get_session)):
+async def get_user_by_id(session: SessionDep, item_id: str):
     return await users_crud.get_by_id(session, item_id)
 
-
 @users_router.post("/", response_model=SecUserRead, status_code=201)
-async def create_user(obj: SecUserCreate, session: AsyncSession = Depends(get_session)):
+async def create_user(session: SessionDep, obj: SecUserCreate):
     obj_data = obj.model_dump()
     obj_data["pswd"] = hash_password(obj.pswd)
     return await users_crud.create(session, SecUserCreate(**obj_data))
 
-
 @users_router.put("/{item_id}", response_model=SecUserRead)
-async def update_user(item_id: str, obj: SecUserUpdate, session: AsyncSession = Depends(get_session)):
+async def update_user(session: SessionDep, item_id: str, obj: SecUserUpdate):
     update_data = obj.model_dump(exclude_unset=True)
     if "pswd" in update_data and update_data["pswd"]:
         update_data["pswd"] = hash_password(update_data["pswd"])
     return await users_crud.update(session, item_id, SecUserUpdate(**update_data))
 
-
 @users_router.delete("/{item_id}")
-async def delete_user(item_id: str, session: AsyncSession = Depends(get_session)):
+async def delete_user(session: SessionDep, item_id: str):
     return await users_crud.delete(session, item_id)
 
 
 app.include_router(users_router)
+app.include_router(config.router)
+app.include_router(security.router)
 
 
 @app.get("/api/v1/health")

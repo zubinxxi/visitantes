@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, UploadFile, Query
+from fastapi import APIRouter, HTTPException, status, UploadFile, Query, Depends
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 import uuid
 
-from app.api.deps import SessionDep, CurrentUser, CurrentUser
+from app.api.deps import SessionDep, CurrentUser, CurrentUser, require_permission
 from app.models.visitor import Visitor
 from app.schemas.visitor import VisitorCreate, VisitorRead, VisitorUpdate, PaginatedVisitorsResponse
 from app.core.config import settings
@@ -17,10 +17,10 @@ router = APIRouter(prefix="/visitors", tags=["visitors"])
 
 @router.get("/", response_model=PaginatedVisitorsResponse)
 async def get_all_visitors(
+    session: SessionDep,
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     search: str = Query("", max_length=100),
-    session: SessionDep = None,
 ):
     offset = (page - 1) * limit
     
@@ -67,7 +67,7 @@ async def get_visitor(visitor_id: int, session: SessionDep):
     return visitor
 
 
-@router.get("/cedula/{cedula}", response_model=VisitorRead)
+@router.get("/cedula/{cedula}", response_model=VisitorRead, dependencies=[Depends(require_permission("visitors", "priv_access"))])
 async def get_visitor_by_cedula(cedula: str, session: SessionDep):
     result = await session.execute(
         select(Visitor).where(Visitor.id_card_number == cedula)
@@ -78,7 +78,7 @@ async def get_visitor_by_cedula(cedula: str, session: SessionDep):
     return visitor
 
 
-@router.post("/", response_model=VisitorRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=VisitorRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("visitors", "priv_insert"))])
 async def create_visitor(visitor_in: VisitorCreate, session: SessionDep):
     existing = await session.execute(
         select(Visitor).where(Visitor.id_card_number == visitor_in.id_card_number)
@@ -103,7 +103,6 @@ async def update_visitor(visitor_id: int, visitor_in: VisitorUpdate, session: Se
     for key, value in update_data.items():
         setattr(visitor, key, value)
 
-    session.add(visitor)
     await session.commit()
     await session.refresh(visitor)
     return visitor
@@ -149,7 +148,6 @@ async def upload_photo(visitor_id: int, file: UploadFile, session: SessionDep):
         buffer.write(content)
 
     visitor.photo = f"/photos/visitors/{filename}"
-    session.add(visitor)
     await session.commit()
     await session.refresh(visitor)
 
@@ -162,9 +160,9 @@ async def upload_photo(visitor_id: int, file: UploadFile, session: SessionDep):
 
 @router.post("/upload-photo-temp")
 async def upload_photo_temp(
+    session: SessionDep,
     file: UploadFile,
     cedula: str = None,
-    session: SessionDep = None,
 ):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:

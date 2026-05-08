@@ -1,20 +1,35 @@
-from fastapi import APIRouter, HTTPException, status, Query
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel
 
-from app.api.deps import SessionDep, CurrentUser
-from app.models.security import SecUser
+from app.api.deps import SessionDep, CurrentUser, require_permission
 from app.models.visit import Visit, VisitsUadmLink, VisitsBuildingsLink
-from app.core.utils import now_panama, today_start_panama
+from app.core.utils import now_panama_naive, today_start_panama
 from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
 from app.services.audit_service import ScLog
-from app.schemas.visit import VisitRead, VisitUpdate, CheckInRequest, VisitListResponse
+from app.schemas.visit import VisitRead, VisitUpdate, VisitListResponse, StatsSummary
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/visits", tags=["visits"])
+
+
+async def _audit(session: AsyncSession, username: str, action: str, description: str):
+    log_entry = ScLog(
+        inserted_date=now_panama_naive(),
+        username=username,
+        application="visitorsdb",
+        creator=username,
+        ip_user="127.0.0.1",
+        action=action,
+        description=description
+    )
+    session.add(log_entry)
+    await session.flush()
 
 
 async def _get_uadm_names(session: AsyncSession, uadm_ids_str: str) -> str:
@@ -43,7 +58,7 @@ async def _get_building_names(session: AsyncSession, building_ids_str: str) -> s
 
 def _build_log_entry(username: str, action: str, description: str) -> ScLog:
     return ScLog(
-        inserted_date=now_panama(),
+        inserted_date=now_panama_naive(),
         username=username,
         application="visitorsdb",
         creator=username,
@@ -53,7 +68,7 @@ def _build_log_entry(username: str, action: str, description: str) -> ScLog:
     )
 
 
-@router.get("/", response_model=list[VisitRead])
+@router.get("/", response_model=list[VisitRead], dependencies=[Depends(require_permission("visitors", "priv_access"))])
 async def get_all_visits(
     session: SessionDep,
     offset: int = Query(default=0, ge=0),
@@ -91,39 +106,57 @@ async def get_all_visits(
     return visit_list
 
 
-@router.get("/paginated", response_model=VisitListResponse)
+@router.get("/paginated", response_model=VisitListResponse, dependencies=[Depends(require_permission("visitors", "priv_access"))])
 async def get_visits_paginated(
     session: SessionDep,
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
     search: str = Query(default=""),
     active_filter: str = Query(default=""),
+    date: str = Query(default="", description="Filter by date (YYYY-MM-DD)"),
 ):
     offset = (page - 1) * limit
-    
-    query = select(Visit).order_by(Visit.check_in.desc())
-    
+
+    base_query = select(Visit, Visitor).join(Visitor, Visit.id_visitors == Visitor.id)
+    base_count = select(func.count(Visit.id)).join(Visitor, Visit.id_visitors == Visitor.id)
+
     if active_filter == "true":
-        query = query.where(Visit.check_out.is_(None))
+        base_query = base_query.where(Visit.check_out.is_(None))
+        base_count = base_count.where(Visit.check_out.is_(None))
     elif active_filter == "false":
-        query = query.where(Visit.check_out.isnot(None))
-    
-    count_query = select(func.count(Visit.id))
-    if active_filter == "true":
-        count_query = count_query.where(Visit.check_out.is_(None))
-    elif active_filter == "false":
-        count_query = count_query.where(Visit.check_out.isnot(None))
-    
-    total_result = await session.execute(count_query)
+        base_query = base_query.where(Visit.check_out.isnot(None))
+        base_count = base_count.where(Visit.check_out.isnot(None))
+
+    if date:
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Formato de fecha inválido: '{date}'. Use YYYY-MM-DD.",
+            )
+        base_query = base_query.where(func.date(Visit.check_in) == date_obj)
+        base_count = base_count.where(func.date(Visit.check_in) == date_obj)
+
+    if search:
+        search_filter = (
+            Visitor.names.like(f"%{search}%")
+            | Visitor.surnames.like(f"%{search}%")
+            | Visitor.id_card_number.like(f"%{search}%")
+        )
+        base_query = base_query.where(search_filter)
+        base_count = base_count.where(search_filter)
+
+    base_query = base_query.order_by(Visit.check_in.desc())
+
+    total_result = await session.execute(base_count)
     total = total_result.scalar() or 0
-    
-    result = await session.execute(query.offset(offset).limit(limit))
-    visits = result.scalars().all()
-    
+
+    result = await session.execute(base_query.offset(offset).limit(limit))
+    rows = result.all()
+
     visit_list = []
-    for visit in visits:
-        visitor = await session.get(Visitor, visit.id_visitors)
-        
+    for visit, visitor in rows:
         visit_dict = VisitRead(
             id=visit.id,
             id_visitors=visit.id_visitors,
@@ -135,17 +168,16 @@ async def get_visits_paginated(
             check_in=visit.check_in,
             check_out=visit.check_out,
             user_created=visit.user_created,
+            names=visitor.names,
+            surnames=visitor.surnames,
+            id_card_number=visitor.id_card_number,
         )
-        if visitor:
-            visit_dict.names = visitor.names
-            visit_dict.surnames = visitor.surnames
-            visit_dict.id_card_number = visitor.id_card_number
         visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
         visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
         visit_list.append(visit_dict)
-    
+
     total_pages = (total + limit - 1) // limit if limit > 0 else 1
-    
+
     return VisitListResponse(
         items=visit_list,
         total=total,
@@ -154,19 +186,20 @@ async def get_visits_paginated(
     )
 
 
-@router.get("/active", response_model=list[VisitRead])
-async def get_active_visits(session: SessionDep):
+@router.get("/active", response_model=list[VisitRead], dependencies=[Depends(require_permission("visitors", "priv_access"))])
+async def get_active_visits(
+    session: SessionDep,
+):
     result = await session.execute(
-        select(Visit)
+        select(Visit, Visitor)
+        .join(Visitor, Visit.id_visitors == Visitor.id)
         .where(Visit.check_out.is_(None))
         .order_by(Visit.check_in.desc())
     )
-    visits = result.scalars().all()
+    visits = result.all()
     
     visit_list = []
-    for visit in visits:
-        visitor = await session.get(Visitor, visit.id_visitors)
-        
+    for visit, visitor in visits:
         visit_dict = VisitRead(
             id=visit.id,
             id_visitors=visit.id_visitors,
@@ -183,216 +216,89 @@ async def get_active_visits(session: SessionDep):
             visit_dict.names = visitor.names
             visit_dict.surnames = visitor.surnames
             visit_dict.id_card_number = visitor.id_card_number
-        visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
-        visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
-        visit_list.append(visit_dict)
-    
-    return visit_list
-
-
-@router.get("/today", response_model=list[VisitRead])
-async def get_today_visits(session: SessionDep):
-    today_start = today_start_panama()
-    result = await session.execute(
-        select(Visit)
-        .where(Visit.check_in >= today_start)
-        .order_by(Visit.check_in.desc())
-    )
-    visits = result.scalars().all()
-    
-    visit_list = []
-    for visit in visits:
-        visitor = await session.get(Visitor, visit.id_visitors)
         
-        visit_dict = VisitRead(
-            id=visit.id,
-            id_visitors=visit.id_visitors,
-            id_type_of_proce=visit.id_type_of_proce,
-            company_represents=visit.company_represents,
-            purpose=visit.purpose,
-            buildings_visited=visit.buildings_visited,
-            uadm_visited=visit.uadm_visited,
-            check_in=visit.check_in,
-            check_out=visit.check_out,
-            user_created=visit.user_created,
-        )
-        if visitor:
-            visit_dict.names = visitor.names
-            visit_dict.surnames = visitor.surnames
-            visit_dict.id_card_number = visitor.id_card_number
         visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
-        visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
         visit_list.append(visit_dict)
     
     return visit_list
 
 
-@router.get("/{visit_id}", response_model=VisitRead)
-async def get_visit(visit_id: int, session: SessionDep):
+@router.post("/checkout-by-qr", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
+async def checkout_by_qr(
+    request: dict,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    visit_id = request.get("visit_id")
+    if not visit_id:
+        raise HTTPException(status_code=400, detail="visit_id es requerido")
+    
     visit = await session.get(Visit, visit_id)
     if not visit:
-        raise HTTPException(status_code=404, detail="Visit not found")
-    return visit
+        raise HTTPException(status_code=404, detail="Visita no encontrada")
+    
+    if visit.check_out:
+        raise HTTPException(status_code=400, detail="La visita ya tiene check-out registrado")
+    
+    visitor = await session.get(Visitor, visit.id_visitors)
+    
+    visit.check_out = now_panama_naive()
 
-
-@router.get("/stats/summary")
-async def get_stats(session: SessionDep):
-    today_start = today_start_panama()
-
-    total_result = await session.execute(select(func.count(Visit.id)))
-    total_visits = total_result.scalar() or 0
-
-    active_result = await session.execute(
-        select(func.count(Visit.id)).where(Visit.check_out.is_(None))
+    await _audit(
+        session,
+        username=current_user.login,
+        action="CHECKOUT",
+        description=f"Checkout by QR - {visitor.names} {visitor.surnames}",
     )
-    active_visits = active_result.scalar() or 0
-
-    today_result = await session.execute(
-        select(func.count(Visit.id)).where(Visit.check_in >= today_start)
-    )
-    today_visits = today_result.scalar() or 0
-
-    unique_result = await session.execute(
-        select(func.count(func.distinct(Visitor.id_card_number)))
-        .select_from(Visit)
-        .outerjoin(Visitor, Visit.id_visitors == Visitor.id)
-    )
-    unique_visitors = unique_result.scalar() or 0
+    await session.commit()
+    await session.refresh(visit)
 
     return {
-        "total_visits": total_visits,
-        "active_visits": active_visits,
-        "today_visits": today_visits,
-        "unique_visitors": unique_visitors,
+        "visit_id": visit.id,
+        "visitor_names": visitor.names,
+        "visitor_surnames": visitor.surnames,
+        "check_out": visit.check_out.isoformat(),
     }
 
 
-@router.post("/checkin", response_model=VisitRead, status_code=status.HTTP_201_CREATED)
-async def check_in(payload: CheckInRequest, session: SessionDep):
-    user_login = getattr(payload, 'user_created', None) or "sysadmin"
-
-    visitor_result = await session.execute(
-        select(Visitor).where(Visitor.id_card_number == payload.id_card_number)
-    )
-    visitor = visitor_result.scalars().first()
-
-    if not visitor:
-        visitor = Visitor(
-            names=payload.names,
-            surnames=payload.surnames,
-            gender=payload.gender,
-            id_card_number=payload.id_card_number,
-            id_num_control=payload.id_num_control,
-            province=payload.province,
-            nationality=payload.nationality,
-            photo="",
-            user_created=user_login,
-        )
-        session.add(visitor)
-        await session.flush()
-
-    buildings_str = ",".join(str(b) for b in payload.building_ids)
-    uadms_str = ",".join(str(u) for u in payload.uadm_ids)
-
-    visit = Visit(
-        id_visitors=visitor.id,
-        id_type_of_proce=payload.id_type_of_proce,
-        company_represents=payload.company_represents,
-        purpose=payload.purpose,
-        buildings_visited=buildings_str,
-        uadm_visited=uadms_str,
-        check_in=now_panama(),
-        user_created=user_login,
-    )
-    session.add(visit)
-    await session.flush()
-
-    for uadm_id in payload.uadm_ids:
-        session.add(VisitsUadmLink(id_visits=visit.id, id_uadm=uadm_id))
-
-    for building_id in payload.building_ids:
-        session.add(VisitsBuildingsLink(id_visits=visit.id, id_building=building_id))
-
-    session.add(
-        _build_log_entry(
-            username=user_login,
-            action="CHECKIN",
-            description=f"Check-in visita #{visit.id} - {visitor.names} {visitor.surnames} ({visitor.id_card_number})",
-        )
-    )
-
-    await session.commit()
-    await session.refresh(visit)
-
-    return visit
-
-
-@router.post("/{visit_id}/checkout", response_model=VisitRead)
-async def check_out(visit_id: int, session: SessionDep, user: CurrentUser):
+@router.post("/{visit_id}/checkout", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
+async def checkout_by_id(
+    visit_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
     visit = await session.get(Visit, visit_id)
     if not visit:
-        raise HTTPException(status_code=404, detail="Visit not found")
-
-    if visit.check_out is not None:
-        raise HTTPException(status_code=400, detail="Visit already checked out")
-
-    visitor_result = await session.execute(
-        select(Visitor).where(Visitor.id == visit.id_visitors)
-    )
-    visitor = visitor_result.scalars().first()
-
-    visit.check_out = now_panama()
-    session.add(visit)
+        raise HTTPException(status_code=404, detail="Visita no encontrada")
     
-    username = user.login if user else "sysadmin"
-    session.add(
-        _build_log_entry(
-            username=username,
-            action="CHECKOUT",
-            description=f"Check-out visita #{visit.id} - {visitor.names} {visitor.surnames}" if visitor else f"Check-out visita #{visit_id}",
-        )
+    if visit.check_out:
+        raise HTTPException(status_code=400, detail="La visita ya tiene check-out registrado")
+    
+    visitor = await session.get(Visitor, visit.id_visitors)
+    
+    visit.check_out = now_panama_naive()
+
+    await _audit(
+        session,
+        username=current_user.login,
+        action="CHECKOUT",
+        description=f"Checkout visita #{visit.id} - {visitor.names} {visitor.surnames}",
     )
     await session.commit()
     await session.refresh(visit)
 
-    return visit
-
-
-@router.put("/{visit_id}", response_model=VisitRead)
-async def update_visit(visit_id: int, visit_in: VisitUpdate, session: SessionDep):
-    visit = await session.get(Visit, visit_id)
-    if not visit:
-        raise HTTPException(status_code=404, detail="Visit not found")
-
-    update_data = visit_in.model_dump(exclude_unset=True)
-    uadm_ids = update_data.pop("uadm_ids", None)
-    building_ids = update_data.pop("building_ids", None)
-
-    for key, value in update_data.items():
-        setattr(visit, key, value)
-
-    if uadm_ids is not None:
-        result = await session.execute(
-            select(VisitsUadmLink).where(VisitsUadmLink.id_visits == visit_id)
-        )
-        for link in result.scalars().all():
-            await session.delete(link)
-        for uadm_id in uadm_ids:
-            session.add(VisitsUadmLink(id_visits=visit_id, id_uadm=uadm_id))
-
-    if building_ids is not None:
-        result = await session.execute(
-            select(VisitsBuildingsLink).where(VisitsBuildingsLink.id_visits == visit_id)
-        )
-        for link in result.scalars().all():
-            await session.delete(link)
-        for building_id in building_ids:
-            session.add(VisitsBuildingsLink(id_visits=visit_id, id_building=building_id))
-
-    session.add(visit)
-    await session.commit()
-    await session.refresh(visit)
-    return visit
+    return VisitRead(
+        id=visit.id,
+        id_visitors=visit.id_visitors,
+        id_type_of_proce=visit.id_type_of_proce,
+        company_represents=visit.company_represents,
+        purpose=visit.purpose,
+        buildings_visited=visit.buildings_visited,
+        uadm_visited=visit.uadm_visited,
+        check_in=visit.check_in,
+        check_out=visit.check_out,
+        user_created=visit.user_created,
+    )
 
 
 @router.delete("/{visit_id}")
@@ -416,3 +322,143 @@ async def delete_visit(visit_id: int, session: SessionDep):
     await session.delete(visit)
     await session.commit()
     return {"message": "Visit deleted successfully"}
+
+
+@router.get("/stats/summary", response_model=StatsSummary, dependencies=[Depends(require_permission("visitors", "priv_access"))])
+async def get_stats_summary(session: SessionDep) -> StatsSummary:
+    try:
+        total_result = await session.execute(select(func.count(Visit.id)))
+        total_visits = total_result.scalar() or 0
+
+        active_result = await session.execute(
+            select(func.count(Visit.id)).where(Visit.check_out.is_(None))
+        )
+        active_visits = active_result.scalar() or 0
+
+        today_start = today_start_panama().replace(tzinfo=None)
+        today_result = await session.execute(
+            select(func.count(Visit.id)).where(Visit.check_in >= today_start)
+        )
+        today_visits = today_result.scalar() or 0
+
+        unique_result = await session.execute(
+            select(func.count(Visitor.id))
+        )
+        unique_visitors = unique_result.scalar() or 0
+
+        return StatsSummary(
+            total_visits=total_visits,
+            active_visits=active_visits,
+            today_visits=today_visits,
+            unique_visitors=unique_visitors,
+        )
+    except Exception:
+        logger.exception("Error al obtener estadísticas del dashboard")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al obtener estadísticas del dashboard",
+        )
+
+
+@router.post("/checkin", response_model=VisitRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("visitors", "priv_insert"))])
+async def create_checkin(
+    request: dict,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    id_card_number = request.get("id_card_number")
+    names = request.get("names")
+    surnames = request.get("surnames")
+    gender = request.get("gender", "M")
+    id_num_control = request.get("id_num_control", "")
+    province = request.get("province", "")
+    nationality = request.get("nationality", "")
+    company_represents = request.get("company_represents", "")
+    purpose = request.get("purpose", "")
+    uadm_ids = request.get("uadm_ids", [])
+    building_ids = request.get("building_ids", [])
+    id_type_of_proce = request.get("id_type_of_proce", 6)
+    user_created = request.get("user_created", current_user.login)
+    
+    visitor_result = await session.execute(
+        select(Visitor).where(Visitor.id_card_number == id_card_number)
+    )
+    visitor = visitor_result.scalars().first()
+    
+    if not visitor:
+        visitor = Visitor(
+            id_card_number=id_card_number,
+            names=names,
+            surnames=surnames,
+            gender=gender,
+            id_num_control=id_num_control,
+            province=province,
+            nationality=nationality,
+            photo="",  # Default empty string for photo
+            user_created=user_created,
+        )
+        session.add(visitor)
+        await session.flush()
+        await session.refresh(visitor)
+    else:
+        active_result = await session.execute(
+            select(Visit).where(
+                Visit.id_visitors == visitor.id,
+                Visit.check_out.is_(None)
+            )
+        )
+        existing_active = active_result.scalars().first()
+        if existing_active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"El visitante {visitor.names} {visitor.surnames} ya tiene una visita activa"
+            )
+    
+    visit = Visit(
+        id_visitors=visitor.id,
+        id_type_of_proce=id_type_of_proce,
+        company_represents=company_represents,
+        purpose=purpose,
+        buildings_visited="",
+        uadm_visited="",
+        check_in=now_panama_naive(),
+        user_created=user_created,
+    )
+    session.add(visit)
+    
+    if uadm_ids:
+        for uadm_id in uadm_ids:
+            link = VisitsUadmLink(id_visits=None, id_uadm=uadm_id)
+            link.id_visits = visit.id
+            session.add(link)
+    
+    if building_ids:
+        for building_id in building_ids:
+            link = VisitsBuildingsLink(id_visits=None, id_building=building_id)
+            link.id_visits = visit.id
+            session.add(link)
+    
+    await _audit(
+        session,
+        username=user_created,
+        action="CHECKIN",
+        description=f"Check-in - {names} {surnames}",
+    )
+    await session.commit()
+    await session.refresh(visit)
+    
+    return VisitRead(
+        id=visit.id,
+        id_visitors=visit.id_visitors,
+        id_type_of_proce=visit.id_type_of_proce,
+        company_represents=visit.company_represents,
+        purpose=visit.purpose,
+        buildings_visited=visit.buildings_visited,
+        uadm_visited=visit.uadm_visited,
+        check_in=visit.check_in,
+        check_out=visit.check_out,
+        user_created=visit.user_created,
+        names=visitor.names,
+        surnames=visitor.surnames,
+        id_card_number=visitor.id_card_number,
+    )

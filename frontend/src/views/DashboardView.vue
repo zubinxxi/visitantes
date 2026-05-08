@@ -194,6 +194,19 @@ onMounted(async () => {
             </router-link>
 
             <router-link
+              to="/checkout"
+              class="flex items-center gap-4 rounded-lg border border-gray-200 dark:border-gray-800 p-4 transition-all hover:border-error-200 dark:hover:border-error-500/30 hover:bg-error-50 dark:hover:bg-error-500/5 group"
+            >
+              <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-error-50 dark:bg-error-500/10 text-error-500 dark:text-error-400 transition-colors group-hover:bg-error-500 group-hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 11-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              </div>
+              <div>
+                <p class="text-theme-sm font-medium text-gray-800 dark:text-white">Checkout Rápido</p>
+                <p class="text-theme-xs text-gray-500 dark:text-gray-400">Salida con QR</p>
+              </div>
+            </router-link>
+
+            <router-link
               to="/visitors"
               class="flex items-center gap-4 rounded-lg border border-gray-200 dark:border-gray-800 p-4 transition-all hover:border-warning-200 dark:hover:border-warning-500/30 hover:bg-warning-50 dark:hover:bg-warning-500/5 group"
             >

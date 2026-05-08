@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'BaseModal' })
+
 import { computed } from 'vue'
 
 interface Props {

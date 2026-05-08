@@ -2,11 +2,8 @@
 import { ref, onMounted, watch } from 'vue'
 import api from '@/lib/api'
 import type { Visit } from '@/types/visit'
-import { useToast } from '@/composables/useToast'
 import Modal from '@/components/Modal.vue'
 import Multiselect from 'vue-multiselect'
-
-const { error: showError } = useToast()
 
 const PANAMA_TZ = 'America/Panama'
 
@@ -26,7 +23,7 @@ const totalVisits = ref(0)
 const pageSize = 10
 
 const searchQuery = ref('')
-const filterStatus = ref<'all' | 'active' | 'completed'>('all')
+const filterStatus = ref<{ value: string; label: string }>(statusOptions[0]!)
 const filterDate = ref('')
 
 const selectedVisit = ref<Visit | null>(null)
@@ -43,10 +40,13 @@ async function loadVisits() {
     if (searchQuery.value) {
       params.search = searchQuery.value
     }
-    if (filterStatus.value === 'active') {
+    if (filterStatus.value.value === 'active') {
       params.active_filter = 'true'
-    } else if (filterStatus.value === 'completed') {
+    } else if (filterStatus.value.value === 'completed') {
       params.active_filter = 'false'
+    }
+    if (filterDate.value) {
+      params.date = filterDate.value
     }
     
     const response = await api.get('/visits/paginated', { params })
@@ -59,11 +59,6 @@ async function loadVisits() {
   } finally {
     loading.value = false
   }
-}
-
-function openDetails(visit: Visit) {
-  selectedVisit.value = visit
-  showDetailsModal.value = true
 }
 
 function formatDateTime(dateStr: string) {
@@ -115,7 +110,7 @@ onMounted(loadVisits)
     </div>
 
     <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs p-6 mb-6">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
+      <div class="flex flex-col sm:flex-row gap-4">
         <div class="flex-1">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
             Buscar
@@ -129,7 +124,7 @@ onMounted(loadVisits)
           />
         </div>
 
-        <div>
+        <div class="flex-1">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
             Estado
           </label>
@@ -145,24 +140,26 @@ onMounted(loadVisits)
           />
         </div>
 
-        <div>
+        <div class="flex-1">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
             Fecha
           </label>
           <input
             v-model="filterDate"
             type="date"
-            class="h-11 w-40 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+            class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
           />
         </div>
 
-        <button
-          @click="loadVisits"
-          :disabled="loading"
-          class="h-11 rounded-lg bg-brand-500 px-6 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
-        >
-          Filtrar
-        </button>
+        <div class="flex items-end">
+          <button
+            @click="loadVisits"
+            :disabled="loading"
+            class="h-11 rounded-lg bg-brand-500 px-6 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
+          >
+            Filtrar
+          </button>
+        </div>
       </div>
     </div>
 

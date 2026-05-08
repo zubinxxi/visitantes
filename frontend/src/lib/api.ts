@@ -4,6 +4,10 @@ const api = axios.create({
   baseURL: '/api/v1',
 })
 
+function isAuthError(status: number): boolean {
+  return status === 401 || status === 403
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
@@ -15,13 +19,23 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+    if (error.response && isAuthError(error.response.status)) {
+      const isLoginRequest = error.config?.url?.includes('/auth/login')
+      const isAlreadyLogin = window.location.pathname === '/login'
+
+      if (!isLoginRequest) {
+        localStorage.removeItem('token')
+
+        if (!isAlreadyLogin) {
+          window.location.href = '/login'
+        }
+      }
+
       return Promise.reject(error)
     }
 
-    const message = error.response?.data?.detail || error.message || 'Error desconocido'
+    const detail = error.response?.data?.detail
+    const message = typeof detail === 'string' ? detail : error.message || 'Error desconocido'
     return Promise.reject(new Error(message))
   },
 )

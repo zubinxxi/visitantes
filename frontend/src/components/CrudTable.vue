@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends Record<string, unknown>">
-import { ref, computed, watch } from 'vue'
+import { ref } from 'vue'
 import type { CrudColumn } from '@/composables/useCrud'
 import Multiselect from 'vue-multiselect'
 
@@ -205,7 +205,7 @@ function onSearchClear() {
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-            <tr v-for="(item, idx) in items" :key="(item.id ?? item.login ?? idx) as string | number" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+            <tr v-for="(item, idx) in items" :key="String(item.id ?? item.login ?? idx)" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
               <td v-for="col in visibleColumns" :key="col.key" class="px-6 py-4 text-theme-sm text-gray-700 dark:text-gray-300">
                 <span v-if="col.type === 'boolean'" :class="item[col.key] ? 'text-success-600 dark:text-success-400' : 'text-error-600 dark:text-error-400'">
                   <svg v-if="item[col.key]" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

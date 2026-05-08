@@ -16,7 +16,7 @@ const {
   loadItems, openCreate, openEdit, closeForm, saveItem,
   openDelete, closeDelete, confirmDelete,
   setSearch, changePage, changeLimit, exportToXlsx, printTable,
-} = useCrud('/maintenance/procedures', columns, 'Tipos de Procedimiento')
+} = useCrud('/maintenance/procedures', columns, 'Tipo de Trámite')
 
 onMounted(loadItems)
 </script>
@@ -31,7 +31,7 @@ onMounted(loadItems)
     :editing-item="editingItem"
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
-    title="Tipos de Procedimiento"
+    title="Tipo de Trámite"
     :page="page"
     :limit="limit"
     :total="total"

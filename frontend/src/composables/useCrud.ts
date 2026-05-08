@@ -230,7 +230,7 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
   async function printTable() {
     const visibleColumns = columns.filter((c) => c.type !== 'hidden')
     let allItems = items.value as CrudItem[]
-    let startNum = 1
+    const startNum = 1
     
     if (!search.value) {
       try {
@@ -248,7 +248,7 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
       return
     }
     
-    let html = `
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
