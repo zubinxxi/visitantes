@@ -23,13 +23,22 @@ Esta guía detalla los pasos para desplegar el proyecto en un servidor **Debian 
 2.  **Configurar Entorno**:
     ```bash
     cd /home/cloudpanel-user/htdocs/api.tudominio.com/
+    # Instalar dependencias del sistema necesarias
+    sudo apt update
     sudo apt install python3.13-venv python3.13-dev build-essential libmariadb-dev
-    python3 -m venv venv
-    source venv/bin/activate
+    
+    # Crear y activar entorno virtual
+    python3 -m venv .venv
+    source .venv/bin/activate
     pip install -r requirements.txt
     ```
-3.  **Archivo .env**: Crea el archivo `.env` basado en `.env.example` con los datos reales de producción (DB, SMTP, FRONTEND_HOST).
-4.  **Servicio Systemd**: Crea el servicio para mantener el backend activo: `sudo nano /etc/systemd/system/visitantes-api.service`
+3.  **Archivo .env**: Crea el archivo `.env` basado en `.env.example` con los datos reales de producción (DB_NAME, DB_USER, DB_PASS, SMTP, FRONTEND_HOST). 
+    *Nota: El sistema soporta caracteres especiales en la contraseña de la base de datos.*
+4.  **Migraciones de Base de Datos**: Sincroniza la estructura de la base de datos:
+    ```bash
+    PYTHONPATH=. alembic upgrade head
+    ```
+5.  **Servicio Systemd**: Crea el servicio para mantener el backend activo: `sudo nano /etc/systemd/system/visitantes-api.service`
     ```ini
     [Unit]
     Description=FastAPI Production Server
@@ -39,14 +48,14 @@ Esta guía detalla los pasos para desplegar el proyecto en un servidor **Debian 
     User=cloudpanel-user
     Group=cloudpanel-user
     WorkingDirectory=/home/cloudpanel-user/htdocs/api.tudominio.com
-    Environment="PATH=/home/cloudpanel-user/htdocs/api.tudominio.com/venv/bin"
+    Environment="PATH=/home/cloudpanel-user/htdocs/api.tudominio.com/.venv/bin"
     # Usamos fastapi run para producción en el puerto asignado por CloudPanel
-    ExecStart=/home/cloudpanel-user/htdocs/api.tudominio.com/venv/bin/fastapi run app/main.py --port 8080
+    ExecStart=/home/cloudpanel-user/htdocs/api.tudominio.com/.venv/bin/fastapi run app/main.py --port 8080
 
     [Install]
     WantedBy=multi-user.target
     ```
-5.  **Activar**:
+6.  **Activar**:
     ```bash
     sudo systemctl daemon-reload
     sudo systemctl enable --now visitantes-api
