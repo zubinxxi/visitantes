@@ -32,6 +32,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Provincias"
+    app-name="maint_provinces"
     :page="page"
     :limit="limit"
     :total="total"

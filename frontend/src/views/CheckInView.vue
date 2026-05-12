@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '@/lib/api'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
@@ -33,24 +33,17 @@ interface Visitor {
   nationality: string
 }
 
-interface Uadm {
-  id: number
-  name: string
-}
-
-interface Building {
-  id: number
-  description: string
-}
+interface Uadm { id: number; name: string }
+interface Building { id: number; description: string }
 
 const labelSizes: readonly LabelSize[] = LABEL_SIZES
 const defaultSize: LabelSize = LABEL_SIZES[0] as LabelSize
 const selectedLabelSize = ref<LabelSize>({ ...defaultSize })
 
 const loading = ref(false)
-const scanning = ref(false)
 const processingQr = ref(false)
 const qrInput = ref('')
+const qrInputRef = ref<HTMLInputElement | null>(null)
 const qrScanned = ref(false)
 const needsRegistration = ref(false)
 const currentVisitor = ref<Visitor | null>(null)
@@ -58,7 +51,16 @@ const currentVisit = ref<{ id: number; check_in: string } | null>(null)
 const parsedData = ref<ParsedVisitor | null>(null)
 const showBadge = ref(false)
 const showBadgeModal = ref(false)
-const badgeData = ref<any>(null)
+interface BadgeData {
+  visit_id: number
+  visitor_name: string
+  id_card_number: string
+  check_in: string
+  uadms: string
+  buildings: string
+}
+
+const badgeData = ref<BadgeData | null>(null)
 const badgeVisit = ref<Visit | null>(null)
 const confirmCompanyRepresents = ref('')
 const confirmPurpose = ref('')
@@ -81,13 +83,15 @@ function getPhotoUrl(photoPath: string | null): string {
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
   return `${baseUrl}${photoPath}?t=${Date.now()}`
 }
-const selectedUadms = ref<number[]>([])
+const selectedUadms = ref<Uadm[]>([])
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const uadmSelectRef = ref<any>(null)
 
-const selectedBuildings = ref<number[]>([])
+const selectedBuildings = ref<Building[]>([])
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const buildingSelectRef = ref<any>(null)
 
-function onSelect(ref: any) {
+function onSelect(ref: { close: () => void }) {
   setTimeout(() => ref.close(), 0)
 }
 
@@ -114,8 +118,8 @@ const photoRequired = ref(false)
 async function loadOptions() {
   try {
     const [uadmRes, buildingRes] = await Promise.all([
-      api.get('/maintenance/uadms', { params: { limit: 100 } }),
-      api.get('/maintenance/buildings', { params: { limit: 100 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 100 } }),
+      api.get('/maintenance/buildings/', { params: { limit: 100 } }),
     ])
     uadmOptions.value = uadmRes.data.items || uadmRes.data
     buildingOptions.value = buildingRes.data.items || buildingRes.data
@@ -150,6 +154,14 @@ async function startCamera() {
   } catch (e) {
     console.error('Camera error:', e)
     showError('No se pudo acceder a la cámara')
+  }
+}
+
+function focusQrInput() {
+  if (!qrScanned.value) {
+    nextTick(() => {
+      qrInputRef.value?.focus()
+    })
   }
 }
 
@@ -207,9 +219,16 @@ async function processQr(rawData: string) {
     }
     
     success('QR procesado correctamente')
-  } catch (e: any) {
-    console.error('Error processing QR:', e)
-    showError(e.message || 'Error al procesar QR')
+  } catch (err: any) {
+    let msg = 'Error al procesar QR'
+    if (err.response?.data?.detail) {
+      msg = err.response.data.detail
+    } else if (err.message) {
+      msg = err.message
+    }
+    
+    console.error('Error processing QR:', err)
+    showError(msg)
     resetForm()
   } finally {
     loading.value = false
@@ -273,7 +292,7 @@ async function registerAndCheckIn() {
     const userLogin = auth.user?.login || 'sysadmin'
     const genderValue = registerForm.value.gender?.value || 'M'
     
-    await api.post('/visitors', {
+    await api.post('/visitors/', {
       names: registerForm.value.names,
       surnames: registerForm.value.surnames,
       gender: genderValue,
@@ -309,9 +328,15 @@ async function registerAndCheckIn() {
     await loadVisitorData()
     
     success('Visitante registrado. Seleccione UADMs y Edificios para confirmar')
-  } catch (e: any) {
-    console.error('Error registering:', e)
-    showError(e.message || 'Error al registrar visitante')
+  } catch (err: any) {
+    let msg = 'Error al registrar visitante'
+    if (err.response?.data?.detail) {
+      msg = err.response.data.detail
+    } else if (err.message) {
+      msg = err.message
+    }
+    console.error('Error registering:', err)
+    showError(msg)
   } finally {
     loading.value = false
   }
@@ -338,8 +363,8 @@ async function loadVisitorData() {
 function confirmCheckIn() {
   if (!currentVisit.value) return
   
-  const uadmIds = selectedUadms.value.map((u: any) => u.id)
-  const buildingIds = selectedBuildings.value.map((b: any) => b.id)
+  const uadmIds = selectedUadms.value.map((u) => u.id)
+  const buildingIds = selectedBuildings.value.map((b) => b.id)
   
   loading.value = true
   api.post('/checkin/confirm', {
@@ -358,21 +383,23 @@ function confirmCheckIn() {
       id_type_of_proce: 6,
       company_represents: confirmCompanyRepresents.value,
       purpose: confirmPurpose.value,
-      buildings_visited: selectedBuildings.value.map((b: any) => b.id).join(','),
-      uadm_visited: selectedUadms.value.map((u: any) => u.id).join(';'),
+      buildings_visited: selectedBuildings.value.map((b) => String(b.id)).join(','),
+      uadm_visited: selectedUadms.value.map((u) => String(u.id)).join(';'),
       check_in: currentVisit.value!.check_in,
       check_out: null,
       user_created: auth.user?.login || 'sysadmin',
       names: currentVisitor.value!.names,
       surnames: currentVisitor.value!.surnames,
       id_card_number: currentVisitor.value!.id_card_number,
-      uadms_names: selectedUadms.value.map((u: any) => u.name).join(';'),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      uadms_names: selectedUadms.value.map((u) => (u as any).name).join(';'),
     }
     showBadgeModal.value = true
     success('Check-in confirmado')
   })
-  .catch((e: any) => {
-    showError(e.message || 'Error al confirmar check-in')
+  .catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : 'Error al confirmar check-in'
+    showError(msg)
   })
   .finally(() => {
     loading.value = false
@@ -469,10 +496,12 @@ function resetForm() {
   confirmCompanyRepresents.value = ''
   confirmPurpose.value = ''
   stopCamera()
+  focusQrInput()
 }
 
 onMounted(() => {
   loadOptions()
+  focusQrInput()
 })
 
 onBeforeUnmount(() => {
@@ -493,9 +522,10 @@ onBeforeUnmount(() => {
         Utilice el lector de código de barras/QR para escanear la cédula del visitante
       </p>
       <input
+        ref="qrInputRef"
         v-model="qrInput"
         @keydown.enter="handleQrInput"
-        @blur="handleQrInput"
+        @blur="focusQrInput"
         type="text"
         class="h-14 w-full text-lg rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
         placeholder="Escanee la cédula aquí..."

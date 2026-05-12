@@ -34,6 +34,7 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
   const showDeleteConfirm = ref(false)
   const deletingItem = ref<CrudItem | null>(null)
   const error = ref('')
+  const form = ref<Record<string, any>>({})
 
   const page = ref(1)
   const limit = ref(10)
@@ -79,7 +80,8 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
     return form
   })
 
-  const form = ref<Record<string, unknown>>({})
+  // Asegurar que baseUrl no termine en barra para manejarla consistentemente
+  const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
 
   async function loadItems(newPage?: number, newLimit?: number, newSearch?: string) {
     loading.value = true
@@ -94,7 +96,10 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
         params.set('search', search.value)
       }
 
-      const response = await api.get(`${baseUrl}/?${params.toString()}`)
+      // IMPORTANTE: Se añade la barra final antes de los parámetros para evitar redirecciones 307
+      // que causan la pérdida de cabeceras de autorización en algunos navegadores.
+      const url = `${normalizedBaseUrl}/?${params.toString()}`
+      const response = await api.get(url)
       const data = response.data
 
       items.value = data.items
@@ -102,7 +107,8 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
       page.value = data.page
       limit.value = data.limit
       totalPages.value = data.total_pages
-    } catch {
+    } catch (e: unknown) {
+      console.error(`Error loading items from ${normalizedBaseUrl}:`, e)
       error.value = 'Error al cargar los datos'
       toast.error('Error al cargar los datos')
     } finally {
@@ -163,10 +169,10 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
       })
 
       if (editingItem.value) {
-        await api.put(`${baseUrl}/${editingItem.value.id}`, payload)
+        await api.put(`${normalizedBaseUrl}/${editingItem.value.id}`, payload)
         toast.success('Registro actualizado correctamente')
       } else {
-        await api.post(baseUrl, payload)
+        await api.post(`${normalizedBaseUrl}/`, payload)
         toast.success('Registro creado correctamente')
       }
 
@@ -192,7 +198,7 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
     if (!deletingItem.value) return
     error.value = ''
     try {
-      await api.delete(`${baseUrl}/${deletingItem.value.id}`)
+      await api.delete(`${normalizedBaseUrl}/${deletingItem.value.id}`)
       toast.success('Registro eliminado correctamente')
       closeDelete()
       await loadItems()
@@ -234,7 +240,7 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
     
     if (!search.value) {
       try {
-        const response = await api.get(`${baseUrl}/?page=1&limit=1000`)
+        const response = await api.get(`${normalizedBaseUrl}/?page=1&limit=1000`)
         const data = response.data
         allItems = data.items
       } catch {

@@ -3,6 +3,9 @@ import { ref, onMounted } from 'vue'
 import api from '@/lib/api'
 import { useToast } from '@/composables/useToast'
 import Multiselect from 'vue-multiselect'
+import { usePermissionsStore } from '@/stores/permissions'
+
+const perms = usePermissionsStore()
 
 const { success, error: showError } = useToast()
 
@@ -58,7 +61,7 @@ const statusOptions: { label: string; value: boolean }[] = [
 async function loadUadms() {
   loading.value = true
   try {
-    const res = await api.get('/maintenance/uadms', { params: { limit: 200 } })
+    const res = await api.get('/maintenance/uadms/', { params: { limit: 200 } })
     uadms.value = res.data.items || res.data
   } catch (e) {
     console.error('Error loading uadms:', e)
@@ -70,10 +73,10 @@ async function loadUadms() {
 async function loadCatalogs() {
   try {
     const [instRes, provRes, typeRes, originRes] = await Promise.all([
-      api.get('/maintenance/institutions', { params: { limit: 100 } }),
-      api.get('/maintenance/provinces', { params: { limit: 100 } }),
-      api.get('/maintenance/type_uadms', { params: { limit: 100 } }),
-      api.get('/maintenance/uadms', { params: { limit: 100 } }),
+      api.get('/maintenance/institutions/', { params: { limit: 100 } }),
+      api.get('/maintenance/provinces/', { params: { limit: 100 } }),
+      api.get('/maintenance/type_uadms/', { params: { limit: 100 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 100 } }),
     ])
     institutions.value = instRes.data.items || instRes.data
     provinces.value = provRes.data.items || provRes.data
@@ -143,7 +146,7 @@ async function saveItem() {
       await api.put(`/maintenance/uadms/${editingItem.value.id}`, payload)
       success('UADM actualizada correctamente')
     } else {
-      await api.post('/maintenance/uadms', payload)
+      await api.post('/maintenance/uadms/', payload)
       success('UADM creada correctamente')
     }
     closeForm()
@@ -191,6 +194,7 @@ onMounted(() => {
         <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ uadms.length }} registros</p>
       </div>
       <button
+        v-if="perms.canCreate('maint_uadms')"
         @click="openCreate"
         class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
       >
@@ -239,9 +243,10 @@ onMounted(() => {
                   </svg>
                 </span>
               </td>
-              <td class="px-6 py-4 text-right">
+              <td v-if="perms.canEdit('maint_uadms') || perms.canDelete('maint_uadms')" class="px-6 py-4 text-right">
                 <div class="inline-flex gap-1 justify-end">
                   <button
+                    v-if="perms.canEdit('maint_uadms')"
                     @click="openEdit(item)"
                     class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     title="Editar"
@@ -251,6 +256,7 @@ onMounted(() => {
                     </svg>
                   </button>
                   <button
+                    v-if="perms.canDelete('maint_uadms')"
                     @click="confirmDelete(item)"
                     class="rounded-lg p-2 text-error-500 hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
                     title="Eliminar"

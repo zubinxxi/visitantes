@@ -27,6 +27,7 @@ class VisitRead(VisitBase):
     names: Optional[str] = None
     surnames: Optional[str] = None
     id_card_number: Optional[str] = None
+    photo: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,17 +1,16 @@
 Correcciones y reglas:
 
-3. al imprimir las etiquetas, la página se imprimen en tamaño a4 y eso es un error, la hoja de impresión debe ajustarce al tamaño de la etiqueta, para que la impresora de etiqueta no imprima mas etiquetas de lo esperado.
 
-
-11. crear un módulo de seguridad para asignación de permisos por grupos de usuarios, donde los usuarios miembros de un grupo puedan acceder a las diferentes páginas y menus del sistema, que mediante checkbox pueda asignar permisos de accseso, crear, editar, borrar, imprimir, exportar, para cada crud o página. Si un usuario miembro de un grupo que no tiene permiso para acceder a páginas o crud, se dbe ocultar del menú principal o de  el menú de mantenimiento.
+11. crear un módulo de seguridad para asignación de permisos por grupos de usuarios, donde los usuarios miembros de un grupo puedan acceder a las diferentes páginas y menus del sistema, que mediante checkbox pueda asignar permisos de accseso, crear, editar, borrar, imprimir, exportar, para cada crud o página. Si un usuario miembro de un grupo que no tiene permiso para acceder a páginas o crud, se dbe ocultar del menú principal o de  el menú de mantenimiento. Revisa las tablas de la base de datos con prefijos sec_ y sc_.
 - los miembros del grupo administrador tienen todos los permisos.
 - los miembros del grupo usuarios tiene acceso a ver el dashboard, editar su perfil.
 - los miembros del grupo seguridad tienen permisos para ver el dashboard, ver, agregar, editar, borrar visitantes. también ver el historial de visitas, ver, agregar visitas (checkin), dar salidas (checkout), ver las visitas activas.
 - los miembros del grupo Admin-Seguridad, tienen los mismos permisos que el grupo seguridad, más el permiso para ver, crear, editar, borrar usuarios del sistema, pero no puede crear, editar ni borrar a los miembros del grupo administrador.
 - debe haber una página que muestre los usuarios miembros de el grupo seleccionado a trabes de un  vue-multiselect (de seleccion unica), solo debe ser visible por los miembros de los grupos administrador y 	Admin-Seguridad.
 
+
 15. en la base de datos hay una tabla "config", que puedes modificar para ajustarla y asosiarla a una página para las configuraciones del sistema, la misma puedes agregarla al menú del usuarioo que esta en el header y que sólo los miembros del grupo administrador puedan manipularla.
 
-
+16. crear página para recuperar contraseña y la de cambiar contraseña.
 
 

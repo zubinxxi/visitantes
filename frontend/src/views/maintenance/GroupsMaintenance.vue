@@ -32,6 +32,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Grupos"
+    app-name="sec_groups"
     :page="page"
     :limit="limit"
     :total="total"

@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '@/lib/api'
 import { useToast } from '@/composables/useToast'
 import Multiselect from 'vue-multiselect'
+import { usePermissionsStore } from '@/stores/permissions'
+
+const perms = usePermissionsStore()
 
 const { success, error: showError } = useToast()
 
@@ -23,6 +26,13 @@ interface Group {
 
 const users = ref<User[]>([])
 const groups = ref<Group[]>([])
+
+// Filtrar grupos: si no es admin real, no ve el grupo "Administradores" (ID 1)
+const filteredGroups = computed(() => {
+  if (perms.isAdmin) return groups.value
+  return groups.value.filter(g => g.group_id !== 1 && g.description.toLowerCase() !== 'administradores')
+})
+
 const loading = ref(false)
 const showForm = ref(false)
 const editingUser = ref<User | null>(null)
@@ -48,7 +58,7 @@ const selectOptions: { label: string; value: string }[] = [
 async function loadUsers() {
   loading.value = true
   try {
-    const res = await api.get('/maintenance/users', { params: { limit: 200 } })
+    const res = await api.get('/maintenance/users/', { params: { limit: 200 } })
     users.value = res.data.items || res.data
   } catch (e) {
     console.error('Error loading users:', e)
@@ -59,7 +69,7 @@ async function loadUsers() {
 
 async function loadGroups() {
   try {
-    const res = await api.get('/maintenance/groups', { params: { limit: 100 } })
+    const res = await api.get('/maintenance/groups/', { params: { limit: 100 } })
     groups.value = res.data.items || res.data
   } catch (e) {
     console.error('Error loading groups:', e)
@@ -68,7 +78,7 @@ async function loadGroups() {
 
 async function loadUserGroups(login: string): Promise<Group[]> {
   try {
-    const res = await api.get(`/security/groups?login=${login}`)
+    const res = await api.get(`/security/groups/?login=${login}`)
     return res.data || []
   } catch {
     return []
@@ -191,6 +201,7 @@ onMounted(() => {
         <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ users.length }} registros</p>
       </div>
       <button
+        v-if="perms.canCreate('sec_users')"
         @click="openCreate"
         class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
       >
@@ -219,7 +230,7 @@ onMounted(() => {
               <th class="px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400">Email</th>
               <th class="px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400">Rol</th>
               <th class="px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400">Activo</th>
-              <th class="px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400">Priv. Admin</th>
+              <th v-if="perms.isAdmin" class="px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400">Priv. Admin</th>
               <th class="px-6 py-3.5 text-right text-theme-xs font-medium uppercase text-gray-400 w-24">Acciones</th>
             </tr>
           </thead>
@@ -241,7 +252,7 @@ onMounted(() => {
                   </svg>
                 </span>
               </td>
-              <td class="px-6 py-4">
+              <td v-if="perms.isAdmin" class="px-6 py-4">
                 <span v-if="user.priv_admin === 'Y'" class="text-success-600 dark:text-success-400">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -253,9 +264,10 @@ onMounted(() => {
                   </svg>
                 </span>
               </td>
-              <td class="px-6 py-4 text-right">
+              <td v-if="perms.canEdit('sec_users') || perms.canDelete('sec_users')" class="px-6 py-4 text-right">
                 <div class="inline-flex gap-1 justify-end">
                   <button
+                    v-if="perms.canEdit('sec_users')"
                     @click="openEdit(user)"
                     class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     title="Editar"
@@ -265,6 +277,7 @@ onMounted(() => {
                     </svg>
                   </button>
                   <button
+                    v-if="perms.canDelete('sec_users')"
                     @click="confirmDelete(user)"
                     class="rounded-lg p-2 text-error-500 hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
                     title="Eliminar"
@@ -347,7 +360,7 @@ onMounted(() => {
               class="multiselect-dark"
             />
           </div>
-          <div>
+          <div v-if="perms.isAdmin">
             <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">Priv. Admin</label>
             <Multiselect
               v-model="form.priv_admin"
@@ -363,7 +376,7 @@ onMounted(() => {
             <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">Grupos</label>
             <Multiselect
               v-model="form.selectedGroups"
-              :options="groups"
+              :options="filteredGroups"
               :multiple="true"
               :close-on-select="true"
               placeholder="Seleccione grupos..."

@@ -14,6 +14,7 @@ export interface Visit {
   id_card_number: string
   uadms_names?: string
   buildings_names?: string
+  photo?: string
 }
 
 export interface Visitor {

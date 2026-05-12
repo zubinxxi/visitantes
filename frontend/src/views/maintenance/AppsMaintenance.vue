@@ -33,6 +33,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Aplicaciones"
+    app-name="sec_apps"
     :page="page"
     :limit="limit"
     :total="total"

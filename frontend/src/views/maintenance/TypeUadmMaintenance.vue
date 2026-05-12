@@ -32,6 +32,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Tipos de UADM"
+    app-name="maint_type_uadm"
     :page="page"
     :limit="limit"
     :total="total"

@@ -4,6 +4,7 @@ import api from '@/lib/api'
 import type { Visit } from '@/types/visit'
 import Modal from '@/components/Modal.vue'
 import Multiselect from 'vue-multiselect'
+import * as XLSX from 'xlsx'
 
 const PANAMA_TZ = 'America/Panama'
 
@@ -99,6 +100,116 @@ watch([filterStatus, filterDate], () => {
   loadVisits()
 })
 
+async function exportToExcel() {
+  try {
+    loading.value = true
+    const params: Record<string, unknown> = {}
+    if (searchQuery.value) params.search = searchQuery.value
+    if (filterStatus.value.value === 'active') params.active_filter = 'true'
+    else if (filterStatus.value.value === 'completed') params.active_filter = 'false'
+    if (filterDate.value) params.date = filterDate.value
+
+    const response = await api.get('/visits/export', { params })
+    const data = response.data.map((v: Visit) => ({
+      'Visitante': `${v.names} ${v.surnames}`,
+      'Cédula': v.id_card_number,
+      'Fecha': formatDateTime(v.check_in).date,
+      'Check-In': formatDateTime(v.check_in).time,
+      'Check-Out': v.check_out ? formatDateTime(v.check_out).time : 'Activa',
+      'Propósito': v.purpose || '',
+      'Empresa': v.company_represents || '',
+      'UADMs': v.uadms_names || '',
+      'Edificios': v.buildings_names || '',
+      'Registrado por': v.user_created || ''
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Visitas')
+    XLSX.writeFile(wb, `historial_visitas_${new Date().toISOString().split('T')[0]}.xlsx`)
+  } catch (e) {
+    console.error('Error al exportar Excel:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function printReport() {
+  try {
+    loading.value = true
+    const params: Record<string, unknown> = {}
+    if (searchQuery.value) params.search = searchQuery.value
+    if (filterStatus.value.value === 'active') params.active_filter = 'true'
+    else if (filterStatus.value.value === 'completed') params.active_filter = 'false'
+    if (filterDate.value) params.date = filterDate.value
+
+    const response = await api.get('/visits/export', { params })
+    const data = response.data
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    let tableRows = ''
+    data.forEach((v: Visit) => {
+      tableRows += `
+        <tr>
+          <td>${v.names} ${v.surnames}</td>
+          <td>${v.id_card_number}</td>
+          <td>${formatDateTime(v.check_in).date}</td>
+          <td>${formatDateTime(v.check_in).time}</td>
+          <td>${v.check_out ? formatDateTime(v.check_out).time : 'Activa'}</td>
+          <td>${v.purpose || ''}</td>
+        </tr>
+      `
+    })
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Reporte de Visitas</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; }
+            h1 { text-align: center; font-size: 1.5rem; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+            th { background-color: #f2f2f2; }
+            .header-info { margin-bottom: 20px; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte de Visitas</h1>
+          <div class="header-info">
+            <p><strong>Fecha de reporte:</strong> ${new Date().toLocaleString()}</p>
+            <p><strong>Filtros:</strong> ${searchQuery.value || 'Ninguno'}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Visitante</th>
+                <th>Cédula</th>
+                <th>Fecha</th>
+                <th>In</th>
+                <th>Out</th>
+                <th>Propósito</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
+    printWindow.close()
+  } catch (e) {
+    console.error('Error al imprimir:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(loadVisits)
 </script>
 
@@ -151,13 +262,29 @@ onMounted(loadVisits)
           />
         </div>
 
-        <div class="flex items-end">
+        <div class="flex items-end gap-2">
           <button
             @click="loadVisits"
             :disabled="loading"
             class="h-11 rounded-lg bg-brand-500 px-6 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
           >
             Filtrar
+          </button>
+          <button
+            @click="exportToExcel"
+            :disabled="loading || visits.length === 0"
+            class="h-11 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50"
+            title="Exportar a Excel"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          </button>
+          <button
+            @click="printReport"
+            :disabled="loading || visits.length === 0"
+            class="h-11 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50"
+            title="Imprimir reporte"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
           </button>
         </div>
       </div>

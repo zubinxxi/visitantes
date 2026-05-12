@@ -33,6 +33,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Instituciones"
+    app-name="maint_institutions"
     :page="page"
     :limit="limit"
     :total="total"

@@ -17,6 +17,14 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('es-PA', { timeZone: PANAMA_TZ, day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function getPhotoUrl(photoPath: string | null): string {
+  if (!photoPath) return ''
+  if (photoPath.startsWith('data:')) return photoPath
+  if (photoPath.startsWith('http')) return photoPath
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  return `${baseUrl}${photoPath}`
+}
+
 onMounted(async () => {
   try {
     const [statsRes, visitsRes] = await Promise.all([
@@ -134,8 +142,11 @@ onMounted(async () => {
                 <tr v-for="visit in recentVisits" :key="visit.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
-                      <div class="flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-500 dark:text-brand-400 font-semibold text-theme-sm">
-                        {{ visit.names?.charAt(0) || '?' }}{{ visit.surnames?.charAt(0) || '' }}
+                      <div class="h-9 w-9 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                        <img v-if="visit.photo" :src="getPhotoUrl(visit.photo)" class="h-full w-full object-cover" :alt="visit.names" />
+                        <div v-else class="flex h-full w-full items-center justify-center bg-brand-50 dark:bg-brand-500/10 text-brand-500 dark:text-brand-400 font-semibold text-theme-sm">
+                          {{ visit.names?.charAt(0) || '?' }}{{ visit.surnames?.charAt(0) || '' }}
+                        </div>
                       </div>
                       <div>
                         <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ visit.names }} {{ visit.surnames }}</p>

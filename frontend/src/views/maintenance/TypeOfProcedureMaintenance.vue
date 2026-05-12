@@ -32,6 +32,7 @@ onMounted(loadItems)
     :show-delete-confirm="showDeleteConfirm"
     :deleting-item="deletingItem"
     title="Tipo de Trámite"
+    app-name="maint_procedures"
     :page="page"
     :limit="limit"
     :total="total"

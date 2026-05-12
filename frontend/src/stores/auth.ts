@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { usePermissionsStore } from './permissions'
 
 export interface User {
   login: string
@@ -63,12 +64,23 @@ export const useAuthStore = defineStore('auth', () => {
     } else {
       user.value = decodeToken(data.access_token)
     }
+
+    // Guardar permisos y grupos en el store de permisos
+    const permissionsStore = usePermissionsStore()
+    permissionsStore.setPermissions(
+      data.permissions || [],
+      data.group_ids || [],
+      data.user?.priv_admin || 'N',
+    )
   }
 
   function logout() {
     token.value = ''
     user.value = null
     localStorage.removeItem('token')
+
+    const permissionsStore = usePermissionsStore()
+    permissionsStore.clearPermissions()
   }
 
   return { token, user, isAuthenticated, login, logout }

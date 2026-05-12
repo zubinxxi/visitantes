@@ -6,12 +6,23 @@ import { useToast } from '@/composables/useToast'
 
 const { error: showError, success } = useToast()
 
-const groups = ref<Array<{id: number, name: string}>>([])
-const selectedGroup = ref<{id: number, name: string} | null>(null)
+interface Group {
+  group_id: number
+  description: string
+}
+
+interface App {
+  app_name: string
+  app_type: string
+  description: string
+}
+
+const groups = ref<Group[]>([])
+const selectedGroup = ref<Group | null>(null)
 const groupUsers = ref<string[]>([])
-const apps = ref<Array<{app_name: string, description: string}>>([])
+const apps = ref<App[]>([])
 const permissions = ref<Record<string, Record<string, boolean>>>({})
-const permissionIds = ref<Record<string, number>>({})
+const saving = ref<string | null>(null)
 
 const privileges = [
   { key: 'priv_access', label: 'Acceso' },
@@ -22,10 +33,20 @@ const privileges = [
   { key: 'priv_print', label: 'Imprimir' },
 ]
 
+// Agrupación de apps por categoría
+const appCategories = [
+  { label: 'Páginas principales', types: ['page'] },
+  { label: 'CRUDs / Módulos', types: ['crud', 'module'] },
+]
+
+function getAppsByCategory(category: { types: string[] }) {
+  return apps.value.filter((a) => category.types.includes(a.app_type || 'page'))
+}
+
 async function loadGroups() {
   try {
-    const res = await api.get('/maintenance/groups', { params: { limit: 100 } })
-    groups.value = res.data.items || res.data
+    const res = await api.get('/maintenance/groups/', { params: { limit: 100 } })
+    groups.value = (res.data.items || res.data) as Group[]
   } catch (e) {
     console.error('Error loading groups:', e)
   }
@@ -33,8 +54,8 @@ async function loadGroups() {
 
 async function loadApps() {
   try {
-    const res = await api.get('/maintenance/apps', { params: { limit: 100 } })
-    apps.value = res.data.items || res.data
+    const res = await api.get('/maintenance/apps/', { params: { limit: 100 } })
+    apps.value = (res.data.items || res.data) as App[]
   } catch (e) {
     console.error('Error loading apps:', e)
   }
@@ -46,7 +67,7 @@ async function loadGroupUsers() {
     return
   }
   try {
-    const res = await api.get(`/security/groups/${selectedGroup.value.id}/users`)
+    const res = await api.get(`/security/groups/${selectedGroup.value.group_id}/users`)
     groupUsers.value = res.data || []
   } catch (e) {
     console.error('Error loading group users:', e)
@@ -57,27 +78,27 @@ async function loadGroupUsers() {
 async function loadPermissions() {
   if (!selectedGroup.value) {
     permissions.value = {}
-    permissionIds.value = {}
     return
   }
   try {
-    const res = await api.get('/maintenance/group_apps', {
-      params: { group_id: selectedGroup.value.id }
+    const res = await api.get('/maintenance/group_apps/', {
+      params: { limit: 500 }
     })
     const perms: Record<string, Record<string, boolean>> = {}
-    const ids: Record<string, number> = {}
-    ;(res.data.items || res.data).forEach((p: Record<string, unknown>) => {
-      const appName = p.app_name as string
-      if (p.id) ids[appName] = p.id as number
-      if (!perms[appName]) perms[appName] = {} as Record<string, boolean>
-      const appPerms = perms[appName]!
-      privileges.forEach(priv => {
-        const privValue = p[priv.key] as string
-        appPerms[priv.key] = privValue === 'Y'
+    const allPerms = (res.data.items || res.data) as Record<string, unknown>[]
+
+    // Filtrar solo los del grupo seleccionado
+    allPerms
+      .filter((p) => p.group_id === selectedGroup.value!.group_id)
+      .forEach((p) => {
+        const appName = p.app_name as string
+        if (!perms[appName]) perms[appName] = {}
+        const appPerms = perms[appName]!
+        privileges.forEach((priv) => {
+          appPerms[priv.key] = (p[priv.key] as string) === 'Y'
+        })
       })
-    })
     permissions.value = perms
-    permissionIds.value = ids
   } catch (e) {
     console.error('Error loading permissions:', e)
   }
@@ -89,36 +110,34 @@ watch(selectedGroup, () => {
 })
 
 async function togglePermission(appName: string, privKey: string) {
-  if (!selectedGroup.value) return
+  if (!selectedGroup.value || isAdminGroup()) return
   const current = permissions.value[appName]?.[privKey] || false
   const newVal = !current
-  const recordId = permissionIds.value[appName]
-  
+  saving.value = `${appName}-${privKey}`
+
   try {
     const payload: Record<string, unknown> = {
-      group_id: selectedGroup.value.id,
+      group_id: selectedGroup.value.group_id,
       app_name: appName,
-      [privKey]: newVal ? 'Y' : 'N'
+      [privKey]: newVal ? 'Y' : 'N',
     }
 
-    if (recordId) {
-      await api.put(`/maintenance/group_apps/${recordId}`, payload)
-    } else {
-      await api.post('/maintenance/group_apps', payload)
-      await loadPermissions()
-    }
+    // Usar el endpoint especializado de upsert que maneja la clave compuesta
+    await api.post('/security/permissions/upsert', payload)
 
     if (!permissions.value[appName]) permissions.value[appName] = {}
-    permissions.value[appName][privKey] = newVal
+    permissions.value[appName]![privKey] = newVal
     success('Permiso actualizado')
   } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al actualizar permiso'
-    showError(errMsg)
+    console.error('Error updating permission:', e)
+    showError('Error al actualizar permiso')
+  } finally {
+    saving.value = null
   }
 }
 
 function isAdminGroup(): boolean {
-  return selectedGroup.value?.name === 'administrador' || selectedGroup.value?.id === 1
+  return selectedGroup.value?.group_id === 1
 }
 
 onMounted(() => {
@@ -144,18 +163,20 @@ onMounted(() => {
         :searchable="true"
         :close-on-select="true"
         placeholder="Seleccione un grupo..."
-        label="name"
-        track-by="id"
+        label="description"
+        track-by="group_id"
         class="multiselect-dark"
       />
     </div>
 
     <div v-if="selectedGroup" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Usuarios del grupo -->
       <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs">
         <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
           <h3 class="text-base font-medium text-gray-800 dark:text-white">
-            Usuarios en {{ selectedGroup.name }}
+            Usuarios en {{ selectedGroup.description }}
           </h3>
+          <p class="text-theme-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ groupUsers.length }} miembro{{ groupUsers.length !== 1 ? 's' : '' }}</p>
         </div>
         <div class="p-6">
           <div v-if="groupUsers.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -172,50 +193,62 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- Matriz de permisos -->
       <div class="lg:col-span-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs overflow-hidden">
         <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
           <h3 class="text-base font-medium text-gray-800 dark:text-white">
-            Matriz de Permisos - {{ selectedGroup.name }}
+            Matriz de Permisos - {{ selectedGroup.description }}
           </h3>
-          <p v-if="isAdminGroup()" class="text-theme-xs text-gray-500 dark:text-gray-400 mt-1">
+          <p v-if="isAdminGroup()" class="text-theme-xs text-success-600 dark:text-success-400 mt-1 flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
             Los administradores tienen todos los permisos por defecto
           </p>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full">
-            <thead>
-              <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400">Aplicación</th>
-                <th v-for="priv in privileges" :key="priv.key" class="px-6 py-3 text-center text-theme-xs font-medium uppercase text-gray-400">
-                  {{ priv.label }}
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-              <tr v-for="app in apps" :key="app.app_name" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                <td class="px-6 py-4 text-theme-sm font-medium text-gray-800 dark:text-white">
-                  {{ app.description || app.app_name }}
-                </td>
-                <td v-for="priv in privileges" :key="priv.key" class="px-6 py-4 text-center">
-                  <button
-                    @click="togglePermission(app.app_name, priv.key)"
-                    :disabled="isAdminGroup()"
-                    :class="[
-                      'w-6 h-6 rounded border-2 transition-colors',
-                      permissions[app.app_name]?.[priv.key]
-                        ? 'bg-brand-500 border-brand-500 text-white'
-                        : 'border-gray-300 dark:border-gray-600 hover:border-brand-300',
-                      isAdminGroup() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                    ]"
-                  >
-                    <svg v-if="permissions[app.app_name]?.[priv.key]" class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div v-for="category in appCategories" :key="category.label">
+            <div v-if="getAppsByCategory(category).length > 0" class="border-b border-gray-100 dark:border-gray-800">
+              <div class="px-6 py-2 bg-gray-25 dark:bg-gray-800/30">
+                <span class="text-theme-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{{ category.label }}</span>
+              </div>
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                    <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400 w-48">Aplicación</th>
+                    <th v-for="priv in privileges" :key="priv.key" class="px-4 py-3 text-center text-theme-xs font-medium uppercase text-gray-400">
+                      {{ priv.label }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                  <tr v-for="app in getAppsByCategory(category)" :key="app.app_name" class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td class="px-6 py-3.5 text-theme-sm font-medium text-gray-800 dark:text-white">
+                      {{ app.description || app.app_name }}
+                    </td>
+                    <td v-for="priv in privileges" :key="priv.key" class="px-4 py-3.5 text-center">
+                      <button
+                        @click="togglePermission(app.app_name, priv.key)"
+                        :disabled="isAdminGroup() || saving === `${app.app_name}-${priv.key}`"
+                        :class="[
+                          'w-6 h-6 rounded border-2 transition-all duration-200 inline-flex items-center justify-center',
+                          (isAdminGroup() || permissions[app.app_name]?.[priv.key])
+                            ? 'bg-brand-500 border-brand-500 text-white'
+                            : 'border-gray-300 dark:border-gray-600 hover:border-brand-300 dark:hover:border-brand-500',
+                          isAdminGroup() ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+                          saving === `${app.app_name}-${priv.key}` ? 'animate-pulse' : '',
+                        ]"
+                      >
+                        <svg v-if="isAdminGroup() || permissions[app.app_name]?.[priv.key]" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import type { CrudColumn } from '@/composables/useCrud'
 import Multiselect from 'vue-multiselect'
+import { usePermissionsStore } from '@/stores/permissions'
 
 interface Props {
   columns: CrudColumn[]
@@ -14,6 +15,7 @@ interface Props {
   deletingItem: Record<string, unknown> | null
   title: string
   newButtonText?: string
+  appName?: string
   page?: number
   limit?: number
   total?: number
@@ -40,6 +42,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   newButtonText: 'Nuevo',
+  appName: '',
   page: 1,
   limit: 10,
   total: 0,
@@ -52,6 +55,24 @@ const props = withDefaults(defineProps<Props>(), {
     { value: 100, label: '100' },
   ] as { value: number; label: string }[],
 })
+
+const permsStore = usePermissionsStore()
+
+function canCreate(): boolean {
+  return !props.appName || permsStore.canCreate(props.appName)
+}
+function canEditItem(): boolean {
+  return !props.appName || permsStore.canEdit(props.appName)
+}
+function canDeleteItem(): boolean {
+  return !props.appName || permsStore.canDelete(props.appName)
+}
+function canExportData(): boolean {
+  return !props.appName || permsStore.canExport(props.appName)
+}
+function canPrintData(): boolean {
+  return !props.appName || permsStore.canPrint(props.appName)
+}
 
 const emit = defineEmits<Emits>()
 
@@ -146,6 +167,7 @@ function onSearchClear() {
         </button>
 
         <button
+          v-if="canExportData()"
           @click="$emit('export')"
           :disabled="loading || items.length === 0"
           class="h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50"
@@ -157,6 +179,7 @@ function onSearchClear() {
         </button>
 
         <button
+          v-if="canPrintData()"
           @click="$emit('print')"
           :disabled="loading || items.length === 0"
           class="h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50"
@@ -168,6 +191,7 @@ function onSearchClear() {
         </button>
 
         <button
+          v-if="canCreate()"
           @click="$emit('create')"
           class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
         >
@@ -201,7 +225,7 @@ function onSearchClear() {
               <th v-for="col in visibleColumns" :key="col.key" :class="['px-6 py-3.5 text-left text-theme-xs font-medium uppercase text-gray-400', col.width || '']">
                 {{ col.label }}
               </th>
-              <th class="px-6 py-3.5 text-right text-theme-xs font-medium uppercase text-gray-400 w-20">Acciones</th>
+              <th v-if="canEditItem() || canDeleteItem()" class="px-6 py-3.5 text-right text-theme-xs font-medium uppercase text-gray-400 w-20">Acciones</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -240,9 +264,10 @@ function onSearchClear() {
                 </span>
                 <span v-else>{{ item[col.key] ?? '—' }}</span>
               </td>
-              <td class="px-6 py-4 text-right">
+              <td v-if="canEditItem() || canDeleteItem()" class="px-6 py-4 text-right">
                 <div class="inline-flex gap-1 justify-end">
                   <button
+                    v-if="canEditItem()"
                     @click="$emit('edit', item)"
                     class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
                     title="Editar"
@@ -252,6 +277,7 @@ function onSearchClear() {
                     </svg>
                   </button>
                   <button
+                    v-if="canDeleteItem()"
                     @click="$emit('delete', item)"
                     class="rounded-lg p-2 text-error-500 hover:bg-error-50 dark:hover:bg-error-900/20 hover:text-error-600 dark:hover:text-error-400 transition-colors"
                     title="Eliminar"

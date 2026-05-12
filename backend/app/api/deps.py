@@ -16,6 +16,9 @@ security_scheme = HTTPBearer(auto_error=False)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
+# ID del grupo Administrador
+ADMIN_GROUP_ID = 1
+
 
 async def get_current_user_optional(
     session: SessionDep,
@@ -75,15 +78,24 @@ async def get_user_group_ids(session: AsyncSession, login: str) -> list[int]:
     result = await session.execute(
         select(SecUserGroupLink.group_id).where(SecUserGroupLink.login == login)
     )
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
-def require_permission(app_name: str, privilege: str = "priv_access"):
+async def is_user_admin(session: AsyncSession, user: SecUser) -> bool:
+    """Verifica si el usuario es administrador por priv_admin o por grupo."""
+    if user.priv_admin == "Y":
+        return True
+    group_ids = await get_user_group_ids(session, user.login)
+    return ADMIN_GROUP_ID in group_ids
+
+
+def require_permission(app_name: str | list[str], privilege: str = "priv_access"):
     async def permission_checker(
         session: SessionDep,
         current_user: SecUser = Depends(get_current_user),
     ):
-        if current_user.priv_admin == "Y":
+        # Los administradores tienen todos los permisos
+        if await is_user_admin(session, current_user):
             return current_user
 
         group_ids = await get_user_group_ids(session, current_user.login)
@@ -94,10 +106,12 @@ def require_permission(app_name: str, privilege: str = "priv_access"):
                 detail=f"Acceso denegado para {app_name}:{privilege}",
             )
 
+        app_names = [app_name] if isinstance(app_name, str) else app_name
+
         permission_result = await session.execute(
             select(SecGroupApp).where(
                 SecGroupApp.group_id.in_(group_ids),
-                SecGroupApp.app_name == app_name,
+                SecGroupApp.app_name.in_(app_names),
                 getattr(SecGroupApp, privilege) == "Y"
             )
         )
@@ -105,9 +119,13 @@ def require_permission(app_name: str, privilege: str = "priv_access"):
         has_permission = permission_result.first() is not None
 
         if not has_permission:
+            detail_msg = f"Permisos insuficientes para {app_name}:{privilege}"
+            if isinstance(app_name, list):
+                detail_msg = f"Permisos insuficientes (requiere uno de {', '.join(app_name)}) para {privilege}"
+            
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permisos insuficientes para {app_name}:{privilege}",
+                detail=detail_msg,
             )
 
         return current_user

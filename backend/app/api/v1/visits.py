@@ -99,6 +99,7 @@ async def get_all_visits(
             visit_dict.names = visitor.names
             visit_dict.surnames = visitor.surnames
             visit_dict.id_card_number = visitor.id_card_number
+            visit_dict.photo = visitor.photo
         visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
         visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
         visit_list.append(visit_dict)
@@ -171,6 +172,7 @@ async def get_visits_paginated(
             names=visitor.names,
             surnames=visitor.surnames,
             id_card_number=visitor.id_card_number,
+            photo=visitor.photo,
         )
         visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
         visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
@@ -184,6 +186,65 @@ async def get_visits_paginated(
         total_pages=total_pages,
         page=page
     )
+
+
+@router.get("/export", response_model=list[VisitRead], dependencies=[Depends(require_permission("visitors", "priv_access"))])
+async def get_visits_export(
+    session: SessionDep,
+    search: str = Query(default=""),
+    active_filter: str = Query(default=""),
+    date: str = Query(default="", description="Filter by date (YYYY-MM-DD)"),
+):
+    base_query = select(Visit, Visitor).join(Visitor, Visit.id_visitors == Visitor.id)
+
+    if active_filter == "true":
+        base_query = base_query.where(Visit.check_out.is_(None))
+    elif active_filter == "false":
+        base_query = base_query.where(Visit.check_out.isnot(None))
+
+    if date:
+        try:
+            date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) == date_obj)
+        except ValueError:
+            pass # Ignore invalid date for export
+
+    if search:
+        search_filter = (
+            Visitor.names.like(f"%{search}%")
+            | Visitor.surnames.like(f"%{search}%")
+            | Visitor.id_card_number.like(f"%{search}%")
+        )
+        base_query = base_query.where(search_filter)
+
+    base_query = base_query.order_by(Visit.check_in.desc())
+    
+    result = await session.execute(base_query)
+    rows = result.all()
+
+    visit_list = []
+    for visit, visitor in rows:
+        visit_dict = VisitRead(
+            id=visit.id,
+            id_visitors=visit.id_visitors,
+            id_type_of_proce=visit.id_type_of_proce,
+            company_represents=visit.company_represents,
+            purpose=visit.purpose,
+            buildings_visited=visit.buildings_visited,
+            uadm_visited=visit.uadm_visited,
+            check_in=visit.check_in,
+            check_out=visit.check_out,
+            user_created=visit.user_created,
+            names=visitor.names,
+            surnames=visitor.surnames,
+            id_card_number=visitor.id_card_number,
+            photo=visitor.photo,
+        )
+        visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
+        visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
+        visit_list.append(visit_dict)
+
+    return visit_list
 
 
 @router.get("/active", response_model=list[VisitRead], dependencies=[Depends(require_permission("visitors", "priv_access"))])

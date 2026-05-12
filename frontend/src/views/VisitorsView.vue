@@ -62,10 +62,10 @@ async function loadProvinces(search?: string) {
   try {
     const params: Record<string, unknown> = { limit: 100 }
     if (search) params.search = search
-    const response = await api.get('/maintenance/provinces', { params })
-    provinceOptions.value = response.data.items.map((p: Record<string, unknown>) => ({
-      value: p.name,
-      label: p.name
+    const response = await api.get('/maintenance/provinces/', { params })
+    provinceOptions.value = response.data.items.map((p: Record<string, any>) => ({
+      value: p.description,
+      label: p.description
     }))
   } catch (error) {
     console.error('Error loading provinces:', error)
