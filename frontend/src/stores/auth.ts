@@ -46,8 +46,14 @@ export const useAuthStore = defineStore('auth', () => {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Credenciales inválidas')
+      let errorMessage = 'Credenciales inválidas'
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.detail || errorMessage
+      } catch {
+        errorMessage = `Error del servidor (${response.status})`
+      }
+      throw new Error(errorMessage)
     }
 
     const data = await response.json()
@@ -83,5 +89,80 @@ export const useAuthStore = defineStore('auth', () => {
     permissionsStore.clearPermissions()
   }
 
-  return { token, user, isAuthenticated, login, logout }
+  async function forgotPassword(loginOrEmail: string) {
+    const response = await fetch('/api/v1/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login_or_email: loginOrEmail }),
+    })
+
+    if (!response.ok) {
+      let errorMessage = 'Error al procesar la solicitud'
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.detail || errorMessage
+      } catch {
+        errorMessage = `Error del servidor (${response.status})`
+      }
+      throw new Error(errorMessage)
+    }
+    return await response.json()
+  }
+
+  async function resetPassword(tokenStr: string, newPassword: string) {
+    const response = await fetch('/api/v1/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: tokenStr, new_password: newPassword }),
+    })
+
+    if (!response.ok) {
+      let errorMessage = 'Error al restablecer la contraseña'
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.detail || errorMessage
+      } catch {
+        errorMessage = `Error del servidor (${response.status})`
+      }
+      throw new Error(errorMessage)
+    }
+    return await response.json()
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    const response = await fetch('/api/v1/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token.value}`,
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    })
+
+    if (!response.ok) {
+      let errorMessage = 'Error al cambiar la contraseña'
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.detail || errorMessage
+      } catch {
+        errorMessage = `Error del servidor (${response.status})`
+      }
+      throw new Error(errorMessage)
+    }
+    return await response.json()
+  }
+
+  return { 
+    token, 
+    user, 
+    isAuthenticated, 
+    login, 
+    logout, 
+    forgotPassword, 
+    resetPassword, 
+    changePassword 
+  }
 })

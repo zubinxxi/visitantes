@@ -1,28 +1,52 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 
-const login = ref('')
-const password = ref('')
+const token = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
+const success = ref(false)
 
-async function handleLogin() {
+onMounted(() => {
+  const tokenQuery = route.query.token as string
+  if (!tokenQuery) {
+    error.value = 'Token de recuperación no encontrado o inválido.'
+  } else {
+    token.value = tokenQuery
+  }
+})
+
+async function handleResetPassword() {
+  if (newPassword.value !== confirmPassword.value) {
+    error.value = 'Las contraseñas no coinciden'
+    return
+  }
+
+  if (newPassword.value.length < 6) {
+    error.value = 'La contraseña debe tener al menos 6 caracteres'
+    return
+  }
+
   loading.value = true
   error.value = ''
   try {
-    await auth.login(login.value, password.value)
-    router.push('/')
+    await auth.resetPassword(token.value, newPassword.value)
+    success.value = true
+    setTimeout(() => {
+      router.push('/login')
+    }, 3000)
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : 'Credenciales inválidas'
-    error.value = message
+    error.value = e instanceof Error ? e.message : 'Error al restablecer la contraseña'
   } finally {
     loading.value = false
   }
@@ -51,7 +75,6 @@ async function handleLogin() {
         </div>
 
         <div class="flex flex-col justify-center flex-1 w-full max-w-md mx-auto">
-          <!-- Logo AMP -->
           <div class="flex justify-center mb-6">
             <img
               src="/img/amp-logo-small-253x95px.png"
@@ -62,15 +85,24 @@ async function handleLogin() {
 
           <div class="mb-5 sm:mb-8 text-center">
             <h1 class="mb-2 font-semibold text-gray-800 dark:text-white text-title-sm">
-              Iniciar Sesión
+              Nueva Contraseña
             </h1>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              Sistema de Gestión de Visitantes
+              Establece tu nueva contraseña de acceso.
             </p>
           </div>
 
-          <div>
-            <form @submit.prevent="handleLogin">
+          <div v-if="success" class="mb-6 rounded-lg border border-success-200 dark:border-success-800 bg-success-50 dark:bg-success-900/20 px-4 py-4 text-center">
+            <svg class="w-12 h-12 text-success-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 class="text-lg font-medium text-success-800 dark:text-success-300 mb-1">¡Contraseña actualizada!</h3>
+            <p class="text-sm text-success-600 dark:text-success-400 mb-4">Tu contraseña ha sido cambiada exitosamente. Serás redirigido al inicio de sesión en unos segundos.</p>
+            <router-link to="/login" class="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 underline">Ir al inicio de sesión ahora</router-link>
+          </div>
+
+          <div v-else>
+            <form @submit.prevent="handleResetPassword">
               <div v-if="error" class="mb-4 rounded-lg border border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-900/20 px-4 py-3">
                 <p class="text-sm text-error-600 dark:text-error-400">{{ error }}</p>
               </div>
@@ -78,39 +110,19 @@ async function handleLogin() {
               <div class="space-y-5">
                 <div>
                   <label
-                    for="login"
+                    for="newPassword"
                     class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
-                    Usuario<span class="text-error-500">*</span>
-                  </label>
-                  <input
-                    v-model="login"
-                    type="text"
-                    id="login"
-                    name="login"
-                    placeholder="Ingresa tu usuario"
-                    class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
-                    required
-                    autocomplete="username"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    for="password"
-                    class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    Contraseña<span class="text-error-500">*</span>
+                    Nueva Contraseña<span class="text-error-500">*</span>
                   </label>
                   <div class="relative">
                     <input
-                      v-model="password"
+                      v-model="newPassword"
                       :type="showPassword ? 'text' : 'password'"
-                      id="password"
-                      placeholder="Ingresa tu contraseña"
-                      class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent py-2.5 pl-4 pr-11 text-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+                      id="newPassword"
+                      placeholder="Mínimo 6 caracteres"
+                      class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
                       required
-                      autocomplete="current-password"
                     />
                     <button
                       type="button"
@@ -143,7 +155,7 @@ async function handleLogin() {
                         <path
                           fill-rule="evenodd"
                           clip-rule="evenodd"
-                          d="M4.63803 3.57709C4.34513 3.2842 3.87026 3.2842 3.57737 3.57709C3.28447 3.86999 3.28447 4.34486 3.57737 4.63775L4.85323 5.91362C3.74609 6.84199 2.89363 8.06395 2.4155 9.45936C2.3615 9.61694 2.3615 9.78801 2.41549 9.94558C3.49488 13.0957 6.48191 15.3619 10.0002 15.3619C11.255 15.3619 12.4422 15.0737 13.4994 14.5598L15.3625 16.4229C15.6554 16.7158 16.1302 16.7158 16.4231 16.4229C16.716 16.13 16.716 15.6551 16.4231 15.3622L4.63803 3.57709ZM12.3608 13.4212L10.4475 11.5079C10.3061 11.5423 10.1584 11.5606 10.0064 11.5606H9.99151C8.96527 11.5606 8.13333 10.7286 8.13333 9.70237C8.13333 9.5461 8.15262 9.39434 8.18895 9.24933L5.91885 6.97923C5.03505 7.69015 4.34057 8.62704 3.92328 9.70247C4.86803 12.1373 7.23361 13.8619 10.0002 13.8619C10.8326 13.8619 11.6287 13.7058 12.3608 13.4212ZM16.0771 9.70249C15.7843 10.4569 15.3552 11.1432 14.8199 11.7311L15.8813 12.7925C16.6329 11.9813 17.2187 11.0143 17.5849 9.94561C17.6389 9.78803 17.6389 9.61696 17.5849 9.45938C16.5055 6.30925 13.5184 4.04303 10.0002 4.04303C9.13525 4.04303 8.30244 4.17999 7.52218 4.43338L8.75139 5.66259C9.1556 5.58413 9.57311 5.54303 10.0002 5.54303C12.7667 5.54303 15.1323 7.26768 16.0771 9.70249Z"
+                          d="M4.63803 3.57709C4.34513 3.2842 3.87026 3.2842 3.57737 3.57709C3.28447 3.86999 3.28447 4.34486 3.57737 4.63775L4.85323 5.91362C3.74609 6.84199 2.89363 8.06395 2.4155 9.45936C2.3615 9.61687 2.3615 9.78801 2.41549 9.94558C3.49488 13.0957 6.48191 15.3619 10.0002 15.3619C11.255 15.3619 12.4422 15.0737 13.4994 14.5598L15.3625 16.4229C15.6554 16.7158 16.1302 16.7158 16.4231 16.4229C16.716 16.13 16.716 15.6551 16.4231 15.3622L4.63803 3.57709ZM12.3608 13.4212L10.4475 11.5079C10.3061 11.5423 10.1584 11.5606 10.0064 11.5606H9.99151C8.96527 11.5606 8.13333 10.7286 8.13333 9.70237C8.13333 9.5461 8.15262 9.39434 8.18895 9.24933L5.91885 6.97923C5.03505 7.69015 4.34057 8.62704 3.92328 9.70247C4.86803 12.1373 7.23361 13.8619 10.0002 13.8619C10.8326 13.8619 11.6287 13.7058 12.3608 13.4212ZM16.0771 9.70249C15.7843 10.4569 15.3552 11.1432 14.8199 11.7311L15.8813 12.7925C16.6329 11.9813 17.2187 11.0143 17.5849 9.94561C17.6389 9.78803 17.6389 9.61696 17.5849 9.45938C16.5055 6.30925 13.5184 4.04303 10.0002 4.04303C9.13525 4.04303 8.30244 4.17999 7.52218 4.43338L8.75139 5.66259C9.1556 5.58413 9.57311 5.54303 10.0002 5.54303C12.7667 5.54303 15.1323 7.26768 16.0771 9.70249Z"
                           fill="#98A2B3"
                         />
                       </svg>
@@ -151,26 +163,34 @@ async function handleLogin() {
                   </div>
                 </div>
 
-                <div class="flex items-center justify-end mt-[-10px]">
-                  <router-link
-                    to="/forgot-password"
-                    class="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                <div>
+                  <label
+                    for="confirmPassword"
+                    class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
-                    ¿Olvidaste tu contraseña?
-                  </router-link>
+                    Confirmar Contraseña<span class="text-error-500">*</span>
+                  </label>
+                  <input
+                    v-model="confirmPassword"
+                    :type="showPassword ? 'text' : 'password'"
+                    id="confirmPassword"
+                    placeholder="Repite tu contraseña"
+                    class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+                    required
+                  />
                 </div>
 
                 <div>
                   <button
                     type="submit"
-                    :disabled="loading"
+                    :disabled="loading || !token"
                     class="flex items-center justify-center w-full px-4 py-3 text-sm font-medium text-white transition rounded-lg bg-brand-500 shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
                   >
                     <span
                       v-if="loading"
                       class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
                     ></span>
-                    {{ loading ? 'Ingresando...' : 'Iniciar Sesión' }}
+                    {{ loading ? 'Actualizando...' : 'Establecer Nueva Contraseña' }}
                   </button>
                 </div>
               </div>
@@ -179,6 +199,7 @@ async function handleLogin() {
         </div>
       </div>
 
+      <!-- Same right panel as LoginView -->
       <div
         class="relative hidden items-center w-full h-full lg:w-1/2 bg-brand-950 lg:grid"
       >

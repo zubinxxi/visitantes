@@ -13,6 +13,13 @@ const perms = usePermissionsStore()
 const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(false)
 const profileOpen = ref(false)
+const changePasswordOpen = ref(false)
+const cpCurrentPassword = ref('')
+const cpNewPassword = ref('')
+const cpConfirmPassword = ref('')
+const cpLoading = ref(false)
+const cpError = ref('')
+const cpSuccess = ref('')
 
 const navItems = [
   {
@@ -107,6 +114,36 @@ function isActive(path: string) {
 function handleLogout() {
   auth.logout()
   router.push('/login')
+}
+
+async function handleChangePassword() {
+  if (cpNewPassword.value !== cpConfirmPassword.value) {
+    cpError.value = 'Las contraseñas no coinciden'
+    return
+  }
+  if (cpNewPassword.value.length < 6) {
+    cpError.value = 'La contraseña debe tener al menos 6 caracteres'
+    return
+  }
+
+  cpLoading.value = true
+  cpError.value = ''
+  cpSuccess.value = ''
+  try {
+    await auth.changePassword(cpCurrentPassword.value, cpNewPassword.value)
+    cpSuccess.value = 'Contraseña actualizada exitosamente'
+    cpCurrentPassword.value = ''
+    cpNewPassword.value = ''
+    cpConfirmPassword.value = ''
+    setTimeout(() => {
+      changePasswordOpen.value = false
+      cpSuccess.value = ''
+    }, 2000)
+  } catch (e: unknown) {
+    cpError.value = e instanceof Error ? e.message : 'Error al cambiar la contraseña'
+  } finally {
+    cpLoading.value = false
+  }
 }
 </script>
 
@@ -313,7 +350,19 @@ function handleLogout() {
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ auth.user?.email || auth.user?.login }}</p>
               </div>
 
-              <div v-if="filteredSecurityItems.length > 0" class="py-1">
+              <div class="py-1">
+                <button
+                  @click="changePasswordOpen = true; profileOpen = false"
+                  class="flex items-center gap-3 w-full px-4 py-2.5 text-theme-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                  </svg>
+                  Cambiar contraseña
+                </button>
+              </div>
+
+              <div v-if="filteredSecurityItems.length > 0" class="py-1 border-t border-gray-200 dark:border-gray-800">
                 <p class="px-4 py-2 text-xs font-medium uppercase text-gray-400 dark:text-gray-500">Seguridad</p>
                 <router-link
                   v-for="item in filteredSecurityItems"
@@ -366,6 +415,77 @@ function handleLogout() {
       <main class="flex-1 overflow-y-auto p-4 sm:p-6">
         <RouterView />
       </main>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div v-if="changePasswordOpen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
+    <div class="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-theme-xl overflow-hidden" @click.stop>
+      <div class="px-6 py-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Cambiar Contraseña</h3>
+        <button @click="changePasswordOpen = false" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <form @submit.prevent="handleChangePassword" class="p-6">
+        <div v-if="cpError" class="mb-4 rounded-lg bg-error-50 dark:bg-error-900/20 px-4 py-3 border border-error-200 dark:border-error-800">
+          <p class="text-sm text-error-600 dark:text-error-400">{{ cpError }}</p>
+        </div>
+        <div v-if="cpSuccess" class="mb-4 rounded-lg bg-success-50 dark:bg-success-900/20 px-4 py-3 border border-success-200 dark:border-success-800">
+          <p class="text-sm text-success-600 dark:text-success-400">{{ cpSuccess }}</p>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Contraseña Actual</label>
+            <input 
+              v-model="cpCurrentPassword" 
+              type="password" 
+              class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm dark:text-white focus:border-brand-500 focus:ring-brand-500/10" 
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Nueva Contraseña</label>
+            <input 
+              v-model="cpNewPassword" 
+              type="password" 
+              class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm dark:text-white focus:border-brand-500 focus:ring-brand-500/10" 
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Confirmar Nueva Contraseña</label>
+            <input 
+              v-model="cpConfirmPassword" 
+              type="password" 
+              class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-sm dark:text-white focus:border-brand-500 focus:ring-brand-500/10" 
+              required
+            />
+          </div>
+        </div>
+
+        <div class="mt-8 flex gap-3">
+          <button 
+            type="button" 
+            @click="changePasswordOpen = false" 
+            class="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
+          >
+            Cancelar
+          </button>
+          <button 
+            type="submit" 
+            :disabled="cpLoading"
+            class="flex-1 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center"
+          >
+            <span v-if="cpLoading" class="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+            Actualizar
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </template>

@@ -41,3 +41,19 @@ def decode_access_token(token: str) -> Optional[str]:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+def create_password_reset_token(subject: str) -> str:
+    expire = now_panama() + timedelta(minutes=15)
+    to_encode = {"sub": subject, "exp": expire, "type": "password_reset"}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        if payload.get("type") != "password_reset":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None

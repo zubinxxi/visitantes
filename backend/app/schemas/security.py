@@ -96,3 +96,17 @@ class SecUserUpdate(BaseModel):
     role: Optional[str] = None
     phone: Optional[str] = None
     pswd: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    login_or_email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

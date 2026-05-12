@@ -1,11 +1,23 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel
 from sqlmodel import select
 
-from app.api.deps import SessionDep
-from app.core.security import verify_password, create_access_token
+from app.api.deps import SessionDep, CurrentUser
+from app.core.security import (
+    verify_password, 
+    create_access_token, 
+    hash_password,
+    create_password_reset_token,
+    verify_password_reset_token,
+)
 from app.models.security import SecUser, SecUserGroupLink, SecGroupApp
-from app.schemas.security import SecGroupAppRead
+from app.schemas.security import (
+    SecGroupAppRead, 
+    ChangePasswordRequest, 
+    ForgotPasswordRequest, 
+    ResetPasswordRequest,
+)
+from app.core.emails import send_reset_password_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,3 +73,93 @@ async def login(payload: LoginRequest, session: SessionDep):
         "group_ids": group_ids,
         "permissions": [SecGroupAppRead.model_validate(p).model_dump() for p in permissions],
     }
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: ForgotPasswordRequest, 
+    session: SessionDep,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Inicia el proceso de recuperación de contraseña enviando un correo.
+    """
+    print(f"DEBUG: Recuperar contraseña para: {payload.login_or_email}")
+    # Buscar por login o email
+    result = await session.execute(
+        select(SecUser).where(
+            (SecUser.login == payload.login_or_email) | 
+            (SecUser.email == payload.login_or_email)
+        )
+    )
+    user = result.scalars().first()
+
+    if not user:
+        print("DEBUG: Usuario no encontrado")
+        # Por seguridad, no revelamos si el usuario existe o no
+        return {"message": "Si el usuario existe, se ha enviado un correo de recuperación."}
+
+    if not user.email:
+         print(f"DEBUG: Usuario {user.login} no tiene email")
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario no tiene un correo electrónico configurado.",
+        )
+
+    print(f"DEBUG: Generando token para {user.login}")
+    token = create_password_reset_token(user.login)
+    
+    print(f"DEBUG: Programando envío de correo a {user.email}")
+    background_tasks.add_task(send_reset_password_email, user.email, user.login, token)
+
+    return {"message": "Si el usuario existe, se ha enviado un correo de recuperación."}
+
+
+@router.post("/reset-password")
+async def reset_password(payload: ResetPasswordRequest, session: SessionDep):
+    """
+    Restablece la contraseña usando un token válido.
+    """
+    login = verify_password_reset_token(payload.token)
+    if not login:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token inválido o expirado",
+        )
+
+    result = await session.execute(select(SecUser).where(SecUser.login == login))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    user.pswd = hash_password(payload.new_password)
+    session.add(user)
+    await session.commit()
+
+    return {"message": "Contraseña actualizada exitosamente"}
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest, 
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    """
+    Cambia la contraseña del usuario autenticado.
+    """
+    if not verify_password(payload.current_password, current_user.pswd):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña actual es incorrecta",
+        )
+
+    current_user.pswd = hash_password(payload.new_password)
+    session.add(current_user)
+    await session.commit()
+
+    return {"message": "Contraseña cambiada exitosamente"}

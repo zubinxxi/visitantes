@@ -31,6 +31,19 @@ class Settings:
         Path(__file__).resolve().parent.parent.parent / "photos" / "visitors"
     )
 
+    # SMTP Configuration
+    SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() == "true"
+    SMTP_SSL: bool = os.getenv("SMTP_SSL", "false").lower() == "true"
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    EMAILS_FROM_EMAIL: str = os.getenv("EMAILS_FROM_EMAIL", "info@visitantesdb.com")
+    EMAILS_FROM_NAME: str = os.getenv("EMAILS_FROM_NAME", "Visitantes AMP")
+
+    # Frontend
+    FRONTEND_HOST: str = os.getenv("FRONTEND_HOST", "http://localhost:5173")
+
     @property
     def database_url(self) -> str:
         return (
