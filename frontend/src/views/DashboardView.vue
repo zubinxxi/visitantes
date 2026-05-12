@@ -21,7 +21,7 @@ function getPhotoUrl(photoPath: string | null): string {
   if (!photoPath) return ''
   if (photoPath.startsWith('data:')) return photoPath
   if (photoPath.startsWith('http')) return photoPath
-  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const baseUrl = import.meta.env.VITE_API_URL || ''
   return `${baseUrl}${photoPath}`
 }
 

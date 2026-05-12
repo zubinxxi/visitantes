@@ -28,8 +28,11 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
-    PHOTOS_DIR: Path = (
-        Path(__file__).resolve().parent.parent.parent / "photos" / "visitors"
+    PHOTOS_DIR: Path = Path(
+        os.getenv(
+            "PHOTOS_DIR",
+            str(Path(__file__).resolve().parent.parent.parent / "photos" / "visitors"),
+        )
     )
 
     # SMTP Configuration

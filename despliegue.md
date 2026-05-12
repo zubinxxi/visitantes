@@ -68,7 +68,7 @@ Esta guía detalla los pasos para desplegar el proyecto en un servidor **Debian 
 1.  **Generar el Build** (Localmente o en servidor):
     ```bash
     cd frontend
-    npm install
+    npm install --legacy-peer-deps
     npm run build
     ```
 2.  **Subir archivos**: Sube el contenido de `frontend/dist/` a `/home/cloudpanel-user/htdocs/tudominio.com/`.
