@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.database import get_session
 from app.core.security import decode_access_token
+from app.core.config import settings
 from app.models.security import SecUser, SecGroupApp
 
 logger = logging.getLogger(__name__)
@@ -16,8 +17,8 @@ security_scheme = HTTPBearer(auto_error=False)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
-# ID del grupo Administrador
-ADMIN_GROUP_ID = 1
+# ID del grupo Administrador (desde configuración)
+ADMIN_GROUP_ID = settings.ADMIN_GROUP_ID
 
 
 async def get_current_user_optional(

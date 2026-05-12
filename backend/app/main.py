@@ -32,8 +32,8 @@ from app.core.security import hash_password
 from sqlmodel import select
  
 
-# ID del grupo Administrador
-ADMIN_GROUP_ID = 1
+# ID del grupo Administrador (desde configuración)
+ADMIN_GROUP_ID = settings.ADMIN_GROUP_ID
 
 
 @asynccontextmanager
@@ -55,7 +55,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        settings.FRONTEND_HOST,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

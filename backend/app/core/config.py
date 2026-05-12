@@ -20,6 +20,7 @@ class Settings:
     DB_PASS: str = _require_env("DB_PASS")
 
     SECRET_KEY: str = _require_env("SECRET_KEY")
+    ADMIN_GROUP_ID: int = int(os.getenv("ADMIN_GROUP_ID", "1"))
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480")
     )

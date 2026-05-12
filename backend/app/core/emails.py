@@ -2,16 +2,17 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
+import logging
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 def send_email(email_to: str, subject: str, html_content: str):
     """
     Envía un correo electrónico usando la configuración SMTP de settings.
     """
     if not settings.SMTP_HOST:
-        print(f"DEBUG: No se envió correo a {email_to} porque SMTP_HOST no está configurado.")
-        print(f"Subject: {subject}")
-        print(f"Content: {html_content}")
+        logger.warning(f"No se envió correo a {email_to} porque SMTP_HOST no está configurado.")
         return
 
     message = MIMEMultipart("alternative")
@@ -36,7 +37,7 @@ def send_email(email_to: str, subject: str, html_content: str):
         server.sendmail(settings.EMAILS_FROM_EMAIL, email_to, message.as_string())
         server.quit()
     except Exception as e:
-        print(f"Error enviando correo a {email_to}: {e}")
+        logger.error(f"Error enviando correo a {email_to}: {e}")
         raise e
 
 def send_reset_password_email(email_to: str, login: str, token: str):

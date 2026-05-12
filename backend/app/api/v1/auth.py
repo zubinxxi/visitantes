@@ -18,6 +18,9 @@ from app.schemas.security import (
     ResetPasswordRequest,
 )
 from app.core.emails import send_reset_password_email
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -84,7 +87,6 @@ async def forgot_password(
     """
     Inicia el proceso de recuperación de contraseña enviando un correo.
     """
-    print(f"DEBUG: Recuperar contraseña para: {payload.login_or_email}")
     # Buscar por login o email
     result = await session.execute(
         select(SecUser).where(
@@ -95,21 +97,17 @@ async def forgot_password(
     user = result.scalars().first()
 
     if not user:
-        print("DEBUG: Usuario no encontrado")
         # Por seguridad, no revelamos si el usuario existe o no
         return {"message": "Si el usuario existe, se ha enviado un correo de recuperación."}
 
     if not user.email:
-         print(f"DEBUG: Usuario {user.login} no tiene email")
          raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El usuario no tiene un correo electrónico configurado.",
         )
 
-    print(f"DEBUG: Generando token para {user.login}")
     token = create_password_reset_token(user.login)
     
-    print(f"DEBUG: Programando envío de correo a {user.email}")
     background_tasks.add_task(send_reset_password_email, user.email, user.login, token)
 
     return {"message": "Si el usuario existe, se ha enviado un correo de recuperación."}
