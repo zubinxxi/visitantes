@@ -47,15 +47,21 @@ class Settings:
 
     @property
     def database_url(self) -> str:
+        from urllib.parse import quote_plus
+        user = quote_plus(self.DB_USER)
+        password = quote_plus(self.DB_PASS)
         return (
-            f"mysql+asyncmy://{self.DB_USER}:{self.DB_PASS}"
+            f"mysql+asyncmy://{user}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 
     @property
     def sync_database_url(self) -> str:
+        from urllib.parse import quote_plus
+        user = quote_plus(self.DB_USER)
+        password = quote_plus(self.DB_PASS)
         return (
-            f"mysql+pymysql://{self.DB_USER}:{self.DB_PASS}"
+            f"mysql+pymysql://{user}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 

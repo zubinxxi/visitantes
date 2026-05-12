@@ -23,6 +23,7 @@ Esta guía detalla los pasos para desplegar el proyecto en un servidor **Debian 
 2.  **Configurar Entorno**:
     ```bash
     cd /home/cloudpanel-user/htdocs/api.tudominio.com/
+    sudo apt install python3.13-venv python3.13-dev build-essential libmariadb-dev
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
