@@ -115,6 +115,8 @@ async def get_visits_paginated(
     search: str = Query(default=""),
     active_filter: str = Query(default=""),
     date: str = Query(default="", description="Filter by date (YYYY-MM-DD)"),
+    start_date: str = Query(default="", description="Filter by start date (YYYY-MM-DD)"),
+    end_date: str = Query(default="", description="Filter by end date (YYYY-MM-DD)"),
 ):
     offset = (page - 1) * limit
 
@@ -131,13 +133,35 @@ async def get_visits_paginated(
     if date:
         try:
             date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) == date_obj)
+            base_count = base_count.where(func.date(Visit.check_in) == date_obj)
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Formato de fecha inválido: '{date}'. Use YYYY-MM-DD.",
             )
-        base_query = base_query.where(func.date(Visit.check_in) == date_obj)
-        base_count = base_count.where(func.date(Visit.check_in) == date_obj)
+    
+    if start_date:
+        try:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) >= start_date_obj)
+            base_count = base_count.where(func.date(Visit.check_in) >= start_date_obj)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Formato de fecha inicial inválido: '{start_date}'. Use YYYY-MM-DD.",
+            )
+
+    if end_date:
+        try:
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) <= end_date_obj)
+            base_count = base_count.where(func.date(Visit.check_in) <= end_date_obj)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Formato de fecha final inválido: '{end_date}'. Use YYYY-MM-DD.",
+            )
 
     if search:
         search_filter = (
@@ -194,6 +218,8 @@ async def get_visits_export(
     search: str = Query(default=""),
     active_filter: str = Query(default=""),
     date: str = Query(default="", description="Filter by date (YYYY-MM-DD)"),
+    start_date: str = Query(default="", description="Filter by start date (YYYY-MM-DD)"),
+    end_date: str = Query(default="", description="Filter by end date (YYYY-MM-DD)"),
 ):
     base_query = select(Visit, Visitor).join(Visitor, Visit.id_visitors == Visitor.id)
 
@@ -207,7 +233,21 @@ async def get_visits_export(
             date_obj = datetime.strptime(date, "%Y-%m-%d").date()
             base_query = base_query.where(func.date(Visit.check_in) == date_obj)
         except ValueError:
-            pass # Ignore invalid date for export
+            pass 
+    
+    if start_date:
+        try:
+            start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) >= start_date_obj)
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+            base_query = base_query.where(func.date(Visit.check_in) <= end_date_obj)
+        except ValueError:
+            pass
 
     if search:
         search_filter = (

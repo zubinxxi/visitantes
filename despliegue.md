@@ -65,7 +65,11 @@ Esta guía detalla los pasos para desplegar el proyecto en un servidor **Debian 
 
 ## 3. Despliegue del Frontend (Vue 3)
 
-1.  **Generar el Build** (Localmente o en servidor):
+1.  **Configurar Entorno**: Crea un archivo `.env.production` en la carpeta `frontend/`:
+    ```env
+    VITE_API_URL=https://api.tudominio.com
+    ```
+2.  **Generar el Build** (Localmente o en servidor):
     ```bash
     cd frontend
     npm install --legacy-peer-deps

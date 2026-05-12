@@ -25,7 +25,8 @@ const pageSize = 10
 
 const searchQuery = ref('')
 const filterStatus = ref<{ value: string; label: string }>(statusOptions[0]!)
-const filterDate = ref('')
+const filterStartDate = ref('')
+const filterEndDate = ref('')
 
 const selectedVisit = ref<Visit | null>(null)
 const showDetailsModal = ref(false)
@@ -46,8 +47,11 @@ async function loadVisits() {
     } else if (filterStatus.value.value === 'completed') {
       params.active_filter = 'false'
     }
-    if (filterDate.value) {
-      params.date = filterDate.value
+    if (filterStartDate.value) {
+      params.start_date = filterStartDate.value
+    }
+    if (filterEndDate.value) {
+      params.end_date = filterEndDate.value
     }
     
     const response = await api.get('/visits/paginated', { params })
@@ -95,7 +99,7 @@ function goToPage(page: number) {
   }
 }
 
-watch([filterStatus, filterDate], () => {
+watch([filterStatus, filterStartDate, filterEndDate], () => {
   currentPage.value = 1
   loadVisits()
 })
@@ -107,7 +111,8 @@ async function exportToExcel() {
     if (searchQuery.value) params.search = searchQuery.value
     if (filterStatus.value.value === 'active') params.active_filter = 'true'
     else if (filterStatus.value.value === 'completed') params.active_filter = 'false'
-    if (filterDate.value) params.date = filterDate.value
+    if (filterStartDate.value) params.start_date = filterStartDate.value
+    if (filterEndDate.value) params.end_date = filterEndDate.value
 
     const response = await api.get('/visits/export', { params })
     const data = response.data.map((v: Visit) => ({
@@ -141,7 +146,8 @@ async function printReport() {
     if (searchQuery.value) params.search = searchQuery.value
     if (filterStatus.value.value === 'active') params.active_filter = 'true'
     else if (filterStatus.value.value === 'completed') params.active_filter = 'false'
-    if (filterDate.value) params.date = filterDate.value
+    if (filterStartDate.value) params.start_date = filterStartDate.value
+    if (filterEndDate.value) params.end_date = filterEndDate.value
 
     const response = await api.get('/visits/export', { params })
     const data = response.data
@@ -253,10 +259,21 @@ onMounted(loadVisits)
 
         <div class="flex-1">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-            Fecha
+            Desde
           </label>
           <input
-            v-model="filterDate"
+            v-model="filterStartDate"
+            type="date"
+            class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+          />
+        </div>
+
+        <div class="flex-1">
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Hasta
+          </label>
+          <input
+            v-model="filterEndDate"
             type="date"
             class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
           />
