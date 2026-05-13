@@ -7,12 +7,18 @@ from app.core.config import settings
 sync_engine = create_engine(
     settings.sync_database_url,
     echo=settings.DEBUG,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_POOL_MAX_OVERFLOW,
+    pool_recycle=settings.DB_POOL_RECYCLE,
     pool_pre_ping=True,
 )
 
 async_engine = create_async_engine(
     settings.database_url,
     echo=settings.DEBUG,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_POOL_MAX_OVERFLOW,
+    pool_recycle=settings.DB_POOL_RECYCLE,
     pool_pre_ping=True,
 )
 

@@ -42,6 +42,11 @@ class Settings:
     EMAILS_FROM_EMAIL: str = os.getenv("EMAILS_FROM_EMAIL", "info@visitantesdb.com")
     EMAILS_FROM_NAME: str = os.getenv("EMAILS_FROM_NAME", "Visitantes AMP")
 
+    # Database pool
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
+    DB_POOL_MAX_OVERFLOW: int = int(os.getenv("DB_POOL_MAX_OVERFLOW", "10"))
+    DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "300"))
+
     # Frontend
     FRONTEND_HOST: str = os.getenv("FRONTEND_HOST", "http://localhost:5173")
 
