@@ -176,6 +176,10 @@ async function handleLogin() {
               </div>
             </form>
           </div>
+
+          <p class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+            &copy; 2026, Autoridad Marítima de Panamá, todos los derechos reservados.
+          </p>
         </div>
       </div>
 
@@ -195,10 +199,10 @@ async function handleLogin() {
           </div>
 
           <div class="flex flex-col items-center max-w-xs z-10">
-            <div class="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-white/10 backdrop-blur-sm">
-              <span class="text-3xl font-bold text-white">V</span>
+            <div class="mb-6 flex items-center gap-3 rounded-xl bg-brand-500 px-5 py-3">
+              <img src="/img/logo-amo-blanco.png" alt="Logo" class="h-8 w-auto" />
+              <span class="text-xl font-semibold text-white">VisitantesDB</span>
             </div>
-            <h2 class="mb-2 text-xl font-semibold text-white">VisitantesDB</h2>
             <p class="text-center text-sm text-gray-400">
               Sistema de Gestión de Visitantes<br />Autoridad Marítima de Panamá
             </p>

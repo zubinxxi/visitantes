@@ -5,6 +5,11 @@ import type { Visit } from '@/types/visit'
 import { useToast } from '@/composables/useToast'
 import { useBadgePrinter } from '@/composables/useBadgePrinter'
 import BadgePrintPreview from '@/components/BadgePrintPreview.vue'
+import BaseModal from '@/components/Modal.vue'
+import Multiselect from 'vue-multiselect'
+
+interface Uadm { id: number; name: string }
+interface Building { id: number; description: string }
 
 const { success, error: showError } = useToast()
 const { selectedVisits, toggleSelectVisit, isVisitSelected, clearSelection } = useBadgePrinter()
@@ -16,6 +21,80 @@ const loading = ref(true)
 const showPrintPreview = ref(false)
 
 const hasSelection = computed(() => selectedVisits.value.length > 0)
+
+// Edit state
+const showEditModal = ref(false)
+const editingVisit = ref<Visit | null>(null)
+const editCompanyRepresents = ref('')
+const editPurpose = ref('')
+const editUadms = ref<Uadm[]>([])
+const editBuildings = ref<Building[]>([])
+const uadmOptions = ref<Uadm[]>([])
+const buildingOptions = ref<Building[]>([])
+const saving = ref(false)
+
+function parseIds(str: string): number[] {
+  if (!str) return []
+  return str.replace(/;/g, ',').split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+}
+
+async function loadEditOptions() {
+  try {
+    const [uadmRes, buildingRes] = await Promise.all([
+      api.get('/maintenance/uadms/', { params: { limit: 100 } }),
+      api.get('/maintenance/buildings/', { params: { limit: 100 } }),
+    ])
+    uadmOptions.value = uadmRes.data.items || uadmRes.data
+    buildingOptions.value = buildingRes.data.items || buildingRes.data
+  } catch (e) {
+    console.error('Error loading edit options:', e)
+  }
+}
+
+async function openEditModal(visit: Visit) {
+  editingVisit.value = visit
+  editCompanyRepresents.value = visit.company_represents || ''
+  editPurpose.value = visit.purpose || ''
+  await loadEditOptions()
+
+  const uadmIds = parseIds(visit.uadm_visited)
+  const buildingIds = parseIds(visit.buildings_visited)
+
+  editUadms.value = uadmOptions.value.filter(u => uadmIds.includes(u.id))
+  editBuildings.value = buildingOptions.value.filter(b => buildingIds.includes(b.id))
+
+  showEditModal.value = true
+}
+
+async function saveEdit() {
+  if (!editingVisit.value) return
+  saving.value = true
+  try {
+    const payload: Record<string, unknown> = {
+      company_represents: editCompanyRepresents.value,
+      purpose: editPurpose.value,
+      uadm_ids: editUadms.value.map(u => u.id),
+      building_ids: editBuildings.value.map(b => b.id),
+    }
+    await api.patch(`/visits/${editingVisit.value.id}`, payload)
+    success('Visita actualizada exitosamente')
+    showEditModal.value = false
+    await loadActive()
+  } catch (err: unknown) {
+    let msg = 'Error al actualizar la visita'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) msg = detail
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
+    showError(msg)
+  } finally {
+    saving.value = false
+  }
+}
+
+
 
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('es-PA', { timeZone: PANAMA_TZ, hour: '2-digit', minute: '2-digit' })
@@ -196,6 +275,15 @@ onMounted(loadActive)
                     </svg>
                   </button>
                   <button
+                    @click="openEditModal(visit)"
+                    class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3.5 py-2 text-theme-xs font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750"
+                    title="Editar visita"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
                     @click="handleCheckout(visit.id)"
                     class="rounded-lg border border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-900/20 px-3.5 py-2 text-theme-xs font-medium text-error-600 dark:text-error-400 shadow-theme-xs hover:bg-error-100 dark:hover:bg-error-900/30"
                   >
@@ -215,5 +303,90 @@ onMounted(loadActive)
       close-label="Salir"
       @close="handlePrintPreviewClose"
     />
+
+    <BaseModal v-model="showEditModal" title="Editar Visita" size="lg" @close="showEditModal = false">
+      <div class="space-y-5">
+        <div class="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div class="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-500 dark:text-brand-400 font-semibold">
+            {{ editingVisit?.names?.charAt(0) || '?' }}{{ editingVisit?.surnames?.charAt(0) || '' }}
+          </div>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">{{ editingVisit?.names }} {{ editingVisit?.surnames }}</p>
+            <p class="text-sm text-gray-500">{{ editingVisit?.id_card_number }}</p>
+          </div>
+        </div>
+
+        <div>
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Unidades Administrativas <span class="text-error-500">*</span>
+          </label>
+          <Multiselect
+            v-model="editUadms"
+            :options="uadmOptions"
+            :multiple="true"
+            placeholder="Seleccione..."
+            label="name"
+            track-by="id"
+            class="multiselect-dark"
+          />
+        </div>
+
+        <div>
+          <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+            Edificios
+          </label>
+          <Multiselect
+            v-model="editBuildings"
+            :options="buildingOptions"
+            :multiple="true"
+            placeholder="Seleccione..."
+            label="description"
+            track-by="id"
+            class="multiselect-dark"
+          />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Empresa que representa
+            </label>
+            <input
+              v-model="editCompanyRepresents"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              placeholder="Empresa o institución"
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Propósito de la visita
+            </label>
+            <input
+              v-model="editPurpose"
+              type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
+              placeholder="Motivo de la visita"
+            />
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <button
+          @click="showEditModal = false"
+          class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs"
+        >
+          Cancelar
+        </button>
+        <button
+          @click="saveEdit"
+          :disabled="saving || editUadms.length === 0"
+          class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
+        >
+          {{ saving ? 'Guardando...' : 'Guardar cambios' }}
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>

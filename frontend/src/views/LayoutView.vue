@@ -4,14 +4,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { usePermissionsStore } from '@/stores/permissions'
+import { useSidebar } from '@/composables/useSidebar'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 const perms = usePermissionsStore()
-const sidebarOpen = ref(false)
-const sidebarCollapsed = ref(false)
+const {
+  isCollapsed: sidebarCollapsed,
+  isMobileOpen: sidebarOpen,
+  toggleCollapse,
+  toggleMobile,
+  setHovered: setSidebarHovered,
+  sidebarExpanded,
+} = useSidebar()
 const profileOpen = ref(false)
 const changePasswordOpen = ref(false)
 const cpCurrentPassword = ref('')
@@ -152,7 +159,7 @@ async function handleChangePassword() {
     <!-- Mobile overlay -->
     <div
       v-if="sidebarOpen"
-      @click="sidebarOpen = false"
+      @click="toggleMobile()"
       class="fixed inset-0 z-40 bg-gray-900/50 lg:hidden"
     ></div>
 
@@ -160,20 +167,22 @@ async function handleChangePassword() {
     <aside
       :class="[
         'fixed top-0 z-50 flex h-screen flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out',
-        sidebarCollapsed ? 'lg:w-[90px]' : 'lg:w-[290px]',
+        sidebarExpanded() ? 'lg:w-[290px]' : 'lg:w-[90px]',
         sidebarOpen ? 'translate-x-0 w-[290px]' : '-translate-x-full lg:translate-x-0',
       ]"
+      @mouseenter="setSidebarHovered(true)"
+      @mouseleave="setSidebarHovered(false)"
     >
       <!-- Logo -->
-      <div class="flex h-16 items-center justify-between border-b border-gray-200 dark:border-gray-800 px-5">
-        <router-link to="/" class="flex items-center gap-3">
-          <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500 text-white font-bold text-sm">
-            V
+      <div class="flex h-16 items-center justify-between border-b border-gray-200 dark:border-gray-800 px-4">
+        <router-link to="/" :class="['flex', sidebarExpanded() ? 'items-center' : 'items-center justify-center w-full']">
+          <div :class="['flex items-center rounded-lg bg-brand-500', sidebarExpanded() ? 'h-10 px-3 gap-2' : 'h-9 w-9 p-1.5 justify-center']">
+            <img src="/img/logo-amo-blanco.png" alt="Logo" :class="sidebarExpanded() ? 'h-6 w-auto' : 'w-full h-full object-contain'" />
+            <span v-show="sidebarExpanded()" class="text-white font-semibold text-sm whitespace-nowrap">VisitantesDB</span>
           </div>
-          <span v-show="!sidebarCollapsed" class="text-lg font-semibold text-gray-900 dark:text-white">VisitantesDB</span>
         </router-link>
         <button
-          @click="sidebarCollapsed = !sidebarCollapsed"
+          @click="toggleCollapse"
           class="hidden lg:flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5"
         >
           <svg
@@ -192,10 +201,10 @@ async function handleChangePassword() {
         <h2
           :class="[
             'mb-4 text-xs font-medium uppercase leading-5 text-gray-400 dark:text-gray-500',
-            sidebarCollapsed ? 'lg:text-center' : '',
+            sidebarExpanded() ? '' : 'lg:text-center',
           ]"
         >
-          {{ sidebarCollapsed ? '•••' : 'Menú Principal' }}
+          {{ sidebarExpanded() ? 'Menú Principal' : '•••' }}
         </h2>
 
         <ul class="flex flex-col gap-4">
@@ -205,19 +214,19 @@ async function handleChangePassword() {
               :class="[
                 'menu-item group',
                 isActive(item.to) ? 'menu-item-active' : 'menu-item-inactive',
-                sidebarCollapsed ? 'lg:justify-center' : 'lg:justify-start',
+                sidebarExpanded() ? 'lg:justify-start' : 'lg:justify-center',
               ]"
             >
               <span :class="isActive(item.to) ? 'menu-item-icon-active' : 'menu-item-icon-inactive'">
                 <span v-html="item.icon"></span>
               </span>
-              <span v-show="!sidebarCollapsed" class="text-theme-sm">{{ item.label }}</span>
+              <span v-show="sidebarExpanded()" class="text-theme-sm">{{ item.label }}</span>
             </router-link>
           </li>
         </ul>
 
         <!-- Maintenance menu -->
-        <div v-if="filteredMaintenanceItems.length > 0" v-show="!sidebarCollapsed" class="mt-6">
+        <div v-if="filteredMaintenanceItems.length > 0" v-show="sidebarExpanded()" class="mt-6">
           <h2 class="mb-4 text-xs font-medium uppercase leading-5 text-gray-400 dark:text-gray-500">
             Mantenimiento
           </h2>
@@ -238,7 +247,7 @@ async function handleChangePassword() {
         </div>
 
         <!-- Security menu -->
-        <div v-if="filteredSecurityItems.length > 0" v-show="!sidebarCollapsed" class="mt-6">
+        <div v-if="filteredSecurityItems.length > 0" v-show="sidebarExpanded()" class="mt-6">
           <h2 class="mb-4 text-xs font-medium uppercase leading-5 text-gray-400 dark:text-gray-500">
             Seguridad
           </h2>
@@ -261,12 +270,12 @@ async function handleChangePassword() {
 
       <!-- User footer -->
       <div class="border-t border-gray-200 dark:border-gray-800 p-4">
-        <div :class="['flex flex-col gap-3', sidebarCollapsed ? 'lg:items-center' : '']">
-          <div :class="['flex items-center gap-3', sidebarCollapsed ? 'lg:justify-center' : '']">
+        <div :class="['flex flex-col gap-3', sidebarExpanded() ? '' : 'lg:items-center']">
+          <div :class="['flex items-center gap-3', sidebarExpanded() ? '' : 'lg:justify-center']">
             <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-500 text-white font-semibold text-sm">
               {{ auth.user?.name?.charAt(0) || 'U' }}
             </div>
-            <div v-show="!sidebarCollapsed" class="min-w-0 flex-1">
+            <div v-show="sidebarExpanded()" class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ auth.user?.name || 'Usuario' }}</p>
               <p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ auth.user?.email || auth.user?.login }}</p>
             </div>
@@ -275,24 +284,24 @@ async function handleChangePassword() {
             @click="handleLogout"
             :class="[
               'flex items-center justify-center gap-2 rounded-lg border border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-900/20 px-3 py-2 text-theme-xs font-medium text-error-600 dark:text-error-400 shadow-theme-xs hover:bg-error-100 dark:hover:bg-error-900/30 transition-colors w-full',
-              sidebarCollapsed ? 'lg:px-2' : '',
+              sidebarExpanded() ? '' : 'lg:px-2',
             ]"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            <span v-show="!sidebarCollapsed">Salir</span>
+            <span v-show="sidebarExpanded()">Salir</span>
           </button>
         </div>
       </div>
     </aside>
 
     <!-- Main content area -->
-    <div class="flex flex-1 flex-col lg:ml-[290px] transition-all duration-300" :class="sidebarCollapsed ? 'lg:ml-[90px]' : ''">
+    <div class="flex flex-1 flex-col transition-all duration-300" :class="sidebarExpanded() ? 'lg:ml-[290px]' : 'lg:ml-[90px]'">
       <!-- Header -->
       <header class="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 sm:px-6">
         <div class="flex items-center gap-4">
-          <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5">
+          <button @click="toggleMobile()" class="lg:hidden rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
             </svg>

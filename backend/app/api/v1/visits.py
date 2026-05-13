@@ -402,6 +402,87 @@ async def checkout_by_id(
     )
 
 
+@router.patch("/{visit_id}", response_model=VisitRead, dependencies=[Depends(require_permission("visitors", "priv_update"))])
+async def update_visit(
+    visit_id: int,
+    update_data: VisitUpdate,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
+    visit = await session.get(Visit, visit_id)
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visita no encontrada")
+
+    update_dict = update_data.model_dump(exclude_unset=True)
+
+    if "company_represents" in update_dict:
+        visit.company_represents = update_dict["company_represents"]
+    if "purpose" in update_dict:
+        visit.purpose = update_dict["purpose"]
+
+    if "uadm_ids" in update_dict:
+        result = await session.execute(
+            select(VisitsUadmLink).where(VisitsUadmLink.id_visits == visit_id)
+        )
+        for link in result.scalars().all():
+            await session.delete(link)
+
+        if update_dict["uadm_ids"]:
+            visit.uadm_visited = ",".join(str(u) for u in update_dict["uadm_ids"])
+            for uadm_id in update_dict["uadm_ids"]:
+                session.add(VisitsUadmLink(id_visits=visit.id, id_uadm=uadm_id))
+        else:
+            visit.uadm_visited = ""
+
+    if "building_ids" in update_dict:
+        result = await session.execute(
+            select(VisitsBuildingsLink).where(VisitsBuildingsLink.id_visits == visit_id)
+        )
+        for link in result.scalars().all():
+            await session.delete(link)
+
+        if update_dict["building_ids"]:
+            visit.buildings_visited = ",".join(str(b) for b in update_dict["building_ids"])
+            for building_id in update_dict["building_ids"]:
+                session.add(VisitsBuildingsLink(id_visits=visit.id, id_building=building_id))
+        else:
+            visit.buildings_visited = ""
+
+    await _audit(
+        session,
+        username=current_user.login,
+        action="UPDATE",
+        description=f"Actualización visita #{visit.id}",
+    )
+    await session.commit()
+    await session.refresh(visit)
+
+    visitor = await session.get(Visitor, visit.id_visitors)
+
+    visit_dict = VisitRead(
+        id=visit.id,
+        id_visitors=visit.id_visitors,
+        id_type_of_proce=visit.id_type_of_proce,
+        company_represents=visit.company_represents,
+        purpose=visit.purpose,
+        buildings_visited=visit.buildings_visited,
+        uadm_visited=visit.uadm_visited,
+        check_in=visit.check_in,
+        check_out=visit.check_out,
+        user_created=visit.user_created,
+    )
+    if visitor:
+        visit_dict.names = visitor.names
+        visit_dict.surnames = visitor.surnames
+        visit_dict.id_card_number = visitor.id_card_number
+        visit_dict.photo = visitor.photo
+
+    visit_dict.uadms_names = await _get_uadm_names(session, visit.uadm_visited)
+    visit_dict.buildings_names = await _get_building_names(session, visit.buildings_visited)
+
+    return visit_dict
+
+
 @router.delete("/{visit_id}")
 async def delete_visit(visit_id: int, session: SessionDep):
     visit = await session.get(Visit, visit_id)
