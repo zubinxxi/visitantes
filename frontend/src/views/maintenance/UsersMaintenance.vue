@@ -47,6 +47,8 @@ const form = ref({
   active: { label: 'Sí', value: 'Y' },
   priv_admin: { label: 'No', value: 'N' },
   phone: '',
+  pswd: '',
+  pswdConfirm: '',
   selectedGroups: [] as Group[],
 })
 
@@ -99,6 +101,8 @@ function openCreate() {
     active: getSelectObj('Y'),
     priv_admin: getSelectObj('N'),
     phone: '',
+    pswd: '',
+    pswdConfirm: '',
     selectedGroups: [],
   }
   showForm.value = true
@@ -115,6 +119,8 @@ async function openEdit(user: User) {
     active: getSelectObj(user.active || 'Y'),
     priv_admin: getSelectObj(user.priv_admin || 'N'),
     phone: user.phone || '',
+    pswd: '',
+    pswdConfirm: '',
     selectedGroups: userGroups,
   }
   showForm.value = true
@@ -127,7 +133,12 @@ function closeForm() {
 
 async function saveUser() {
   try {
-    const payload = {
+    if (!editingUser.value && form.value.pswd !== form.value.pswdConfirm) {
+      showError('Las contraseñas no coinciden')
+      return
+    }
+
+    const payload: Record<string, unknown> = {
       login: form.value.login,
       name: form.value.name,
       email: form.value.email,
@@ -138,6 +149,7 @@ async function saveUser() {
     }
 
     if (editingUser.value) {
+      if (form.value.pswd) payload.pswd = form.value.pswd
       await api.put(`/maintenance/users/${form.value.login}`, payload)
       const currentGroups = form.value.selectedGroups.map(g => g.group_id)
       const allGroups = groups.value.map(g => g.group_id)
@@ -150,6 +162,7 @@ async function saveUser() {
       }
       success('Usuario actualizado correctamente')
     } else {
+      payload.pswd = form.value.pswd
       await api.post('/maintenance/users', payload)
       for (const g of form.value.selectedGroups) {
         await api.post(`/security/groups/${g.group_id}/users/${form.value.login}`).catch(() => {})
@@ -345,6 +358,26 @@ onMounted(() => {
             <input
               v-model="form.phone"
               type="text"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+            />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
+              Contraseña
+              <span v-if="!editingUser" class="text-error-500">*</span>
+            </label>
+            <input
+              v-model="form.pswd"
+              type="password"
+              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+              :placeholder="editingUser ? 'Dejar vacío para no cambiar' : ''"
+            />
+          </div>
+          <div v-if="!editingUser">
+            <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">Confirmar Contraseña <span class="text-error-500">*</span></label>
+            <input
+              v-model="form.pswdConfirm"
+              type="password"
               class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
             />
           </div>

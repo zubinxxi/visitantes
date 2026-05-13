@@ -53,8 +53,15 @@ async function handleCheckout(id: number) {
       toggleSelectVisit(activeVisits.value.find((v) => v.id === id) as Visit)
     }
     success('Check-out realizado exitosamente')
-  } catch (e: unknown) {
-    showError(e instanceof Error ? e.message : 'Error en check-out')
+  } catch (err: unknown) {
+    let errMsg = 'Error en check-out'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) errMsg = detail
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
+    showError(errMsg)
   }
 }
 

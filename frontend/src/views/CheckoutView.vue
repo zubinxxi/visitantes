@@ -60,8 +60,14 @@ async function processQr(rawData: string) {
     setTimeout(() => {
       router.push('/')
     }, 3000)
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al procesar checkout'
+  } catch (err: unknown) {
+    let errMsg = 'Error al procesar checkout'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) errMsg = detail
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     showError(errMsg)
   } finally {
     scanning.value = false

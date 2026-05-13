@@ -37,7 +37,8 @@ class RegisterRequest(BaseModel):
 
 
 class ConfirmCheckInRequest(BaseModel):
-    visit_id: int
+    visit_id: Optional[int] = None
+    visitor_id: Optional[int] = None
     uadm_ids: List[int] = []
     building_ids: List[int] = []
     company_represents: str = ""
@@ -71,34 +72,62 @@ def _build_log_entry(username: str, action: str, description: str) -> ScLog:
 
 def _parse_qr_data(raw_data: str) -> dict:
     parts = raw_data.split("|")
-    if len(parts) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Formato QR inválido"
-        )
     
-    id_card_number = parts[0].strip() if parts[0] else ""
-    names = parts[1].strip() if parts[1] else ""
-    surnames = parts[2].strip() if len(parts) > 2 and parts[2] else ""
-    gender = parts[4].strip().upper() if len(parts) > 4 and parts[4] else "M"
+    if len(parts) >= 2:
+        id_card_number = parts[0].strip() if parts[0] else ""
+        names = parts[1].strip() if parts[1] else ""
+        surnames = parts[2].strip() if len(parts) > 2 and parts[2] else ""
+        
+        gender = "M"
+        if len(parts) > 4 and parts[4]:
+            gender = parts[4].strip().upper()
+        
+        province = ""
+        if len(parts) > 5 and parts[5]:
+            province = parts[5].strip().split(",")[0].strip()
+        
+        nationality = ""
+        nationality_candidates = ["PANAMEÑA", "PANAMÁ", "COSTA RICA", "NICARAGUA", "HONDURAS", "EL SALVADOR", "GUATEMALA"]
+        for i in range(6, min(len(parts), 10)):
+            if parts[i] and any(n in parts[i].upper() for n in nationality_candidates):
+                nationality = parts[i].strip()
+                break
+        if not nationality and len(parts) > 7 and parts[7]:
+            nationality = parts[7].strip()
+        
+        id_num_control = ""
+        id_num_control_candidates = ["A1", "A2", "1B", "E1", "E2"]
+        for i in range(9, len(parts)):
+            if parts[i] and any(parts[i].strip().upper().startswith(c) for c in id_num_control_candidates):
+                id_num_control = parts[i].strip()
+                break
+        
+        return {
+            "id_card_number": id_card_number,
+            "names": names,
+            "surnames": surnames,
+            "gender": gender,
+            "province": province,
+            "nationality": nationality,
+            "id_num_control": id_num_control
+        }
     
-    province = ""
-    if len(parts) > 5 and parts[5]:
-        province = parts[5].strip().split(",")[0].strip()
+    cleaned = raw_data.strip().replace("-", "").replace(" ", "")
+    if cleaned and cleaned.isdigit() and len(cleaned) >= 7:
+        return {
+            "id_card_number": raw_data.strip(),
+            "names": "",
+            "surnames": "",
+            "gender": "M",
+            "province": "",
+            "nationality": "",
+            "id_num_control": ""
+        }
     
-    nationality = parts[7].strip() if len(parts) > 7 and parts[7] else ""
-    
-    id_num_control = parts[-1].strip() if parts[-1] else ""
-    
-    return {
-        "id_card_number": id_card_number,
-        "names": names,
-        "surnames": surnames,
-        "gender": gender,
-        "province": province,
-        "nationality": nationality,
-        "id_num_control": id_num_control
-    }
+    raise HTTPException(
+        status_code=400,
+        detail="Formato QR inválido. Escanee el código QR o ingrese un número de cédula válido (ej: 8-7777-8888)"
+    )
 
 
 @router.post("/process-qr", response_model=QrProcessResponse)
@@ -129,20 +158,6 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
             detail="El visitante tiene una visita activa"
         )
 
-    visit = Visit(
-        id_visitors=visitor.id,
-        id_type_of_proce=6,
-        company_represents="",
-        purpose="",
-        buildings_visited="",
-        uadm_visited="",
-        check_in=now_panama_naive(),
-        user_created=user.login,
-    )
-    session.add(visit)
-    await session.commit()
-    await session.refresh(visit)
-    
     return QrProcessResponse(
         needs_registration=False,
         visitor={
@@ -155,10 +170,7 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
             "province": visitor.province,
             "nationality": visitor.nationality
         },
-        visit={
-            "id": visit.id,
-            "check_in": visit.check_in.isoformat() if visit.check_in else None
-        }
+        visit=None
     )
 
 
@@ -241,9 +253,43 @@ async def register_and_checkin(payload: RegisterRequest, session: SessionDep, us
 
 @router.post("/confirm", response_model=VisitRead)
 async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, user: CurrentUser):
-    visit = await session.get(Visit, payload.visit_id)
-    if not visit:
-        raise HTTPException(status_code=404, detail="Visita no encontrada")
+    if payload.visit_id:
+        visit = await session.get(Visit, payload.visit_id)
+        if not visit:
+            raise HTTPException(status_code=404, detail="Visita no encontrada")
+    elif payload.visitor_id:
+        visitor = await session.get(Visitor, payload.visitor_id)
+        if not visitor:
+            raise HTTPException(status_code=404, detail="Visitante no encontrado")
+        
+        active_result = await session.execute(
+            select(Visit).where(
+                Visit.id_visitors == payload.visitor_id,
+                Visit.check_out.is_(None)
+            )
+        )
+        existing_active = active_result.scalars().first()
+        if existing_active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El visitante ya tiene una visita activa"
+            )
+        
+        visit = Visit(
+            id_visitors=payload.visitor_id,
+            id_type_of_proce=6,
+            company_represents="",
+            purpose="",
+            buildings_visited="",
+            uadm_visited="",
+            check_in=now_panama_naive(),
+            user_created=user.login,
+        )
+        session.add(visit)
+        await session.commit()
+        await session.refresh(visit)
+    else:
+        raise HTTPException(status_code=400, detail="Se requiere visit_id o visitor_id")
     
     if payload.uadm_ids:
         uadms_str = ",".join(str(u) for u in payload.uadm_ids)

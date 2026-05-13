@@ -180,8 +180,19 @@ async function handleQrInput(event: Event) {
   qrScanned.value = true
   try {
     await processQr(value)
-  } finally {
     qrInput.value = ''
+  } catch (err: unknown) {
+    qrScanned.value = false
+    qrInput.value = ''
+    let msg = 'Error al procesar QR'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) msg = detail
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
+    showError(msg)
+  } finally {
     processingQr.value = false
   }
 }
@@ -287,12 +298,10 @@ async function registerAndCheckIn() {
       }
     }
     
-    console.log('Creating visitor with photo:', photoUrl)
-    
     const userLogin = auth.user?.login || 'sysadmin'
     const genderValue = registerForm.value.gender?.value || 'M'
     
-    await api.post('/visitors/', {
+    const visitorRes = await api.post('/visitors/', {
       names: registerForm.value.names,
       surnames: registerForm.value.surnames,
       gender: genderValue,
@@ -303,89 +312,70 @@ async function registerAndCheckIn() {
       photo: photoUrl,
       user_created: userLogin,
     })
-    console.log('Visitor created successfully')
     
-    const visitRes = await api.post('/visits/checkin', {
-      id_card_number: registerForm.value.id_card_number,
+    showRegisterForm.value = false
+    currentVisit.value = null
+    
+    currentVisitor.value = {
+      id: visitorRes.data.id,
       names: registerForm.value.names,
       surnames: registerForm.value.surnames,
+      id_card_number: registerForm.value.id_card_number,
+      photo: photoUrl,
       gender: genderValue,
-      id_num_control: registerForm.value.id_num_control,
       province: registerForm.value.province,
       nationality: registerForm.value.nationality,
-      company_represents: registerForm.value.company_represents,
-      purpose: registerForm.value.purpose,
-      uadm_ids: [],
-      building_ids: [],
-      id_type_of_proce: 6,
-      user_created: userLogin,
-    })
-    
-    currentVisit.value = { id: visitRes.data.id, check_in: visitRes.data.check_in }
-    showRegisterForm.value = false
+    }
     
     await loadOptions()
-    await loadVisitorData()
     
     success('Visitante registrado. Seleccione UADMs y Edificios para confirmar')
-  } catch (err: any) {
+  } catch (err: unknown) {
     let msg = 'Error al registrar visitante'
-    if (err.response?.data?.detail) {
-      msg = err.response.data.detail
-    } else if (err.message) {
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) msg = detail
+    } else if (err instanceof Error) {
       msg = err.message
     }
-    console.error('Error registering:', err)
     showError(msg)
   } finally {
     loading.value = false
   }
 }
 
-async function loadVisitorData() {
-  try {
-    const res = await api.get(`/visitors/cedula/${registerForm.value.id_card_number}`)
-    currentVisitor.value = {
-      id: res.data.id,
-      names: res.data.names,
-      surnames: res.data.surnames,
-      id_card_number: res.data.id_card_number,
-      photo: getPhotoUrl(res.data.photo),
-      gender: res.data.gender,
-      province: res.data.province,
-      nationality: res.data.nationality,
-    }
-  } catch (e) {
-    console.error('Error loading visitor:', e)
-  }
-}
-
 function confirmCheckIn() {
-  if (!currentVisit.value) return
+  if (!currentVisitor.value) return
   
   const uadmIds = selectedUadms.value.map((u) => u.id)
   const buildingIds = selectedBuildings.value.map((b) => b.id)
   
   loading.value = true
-  api.post('/checkin/confirm', {
-    visit_id: currentVisit.value.id,
+  const payload: { visitor_id: number; uadm_ids: number[]; building_ids: number[]; company_represents: string; purpose: string } = {
+    visitor_id: currentVisitor.value.id,
     uadm_ids: uadmIds,
     building_ids: buildingIds,
     company_represents: confirmCompanyRepresents.value,
     purpose: confirmPurpose.value,
-  })
-  .then(async () => {
-    const badgeRes = await api.get(`/checkin/visits/${currentVisit.value!.id}/badge`)
+  }
+  
+  api.post('/checkin/confirm', payload)
+  .then(async (response) => {
+    const visitId = response.data.id
+    const checkInTime = response.data.check_in
+    currentVisit.value = { id: visitId, check_in: checkInTime }
+    
+    const badgeRes = await api.get(`/checkin/visits/${visitId}/badge`)
     badgeData.value = badgeRes.data
     badgeVisit.value = {
-      id: currentVisit.value!.id,
+      id: visitId,
       id_visitors: currentVisitor.value!.id,
       id_type_of_proce: 6,
       company_represents: confirmCompanyRepresents.value,
       purpose: confirmPurpose.value,
       buildings_visited: selectedBuildings.value.map((b) => String(b.id)).join(','),
       uadm_visited: selectedUadms.value.map((u) => String(u.id)).join(';'),
-      check_in: currentVisit.value!.check_in,
+      check_in: checkInTime,
       check_out: null,
       user_created: auth.user?.login || 'sysadmin',
       names: currentVisitor.value!.names,
@@ -398,7 +388,13 @@ function confirmCheckIn() {
     success('Check-in confirmado')
   })
   .catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : 'Error al confirmar check-in'
+    let msg = 'Error al confirmar check-in'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      if (detail) msg = detail
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
     showError(msg)
   })
   .finally(() => {
@@ -519,7 +515,7 @@ onBeforeUnmount(() => {
     <div v-if="!qrScanned" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs p-6 mb-6">
       <h3 class="text-base font-medium text-gray-800 dark:text-white mb-4">Escanear Cédula</h3>
       <p class="text-theme-sm text-gray-500 dark:text-gray-400 mb-4">
-        Utilice el lector de código de barras/QR para escanear la cédula del visitante
+        Escanee el código QR de la cédula o ingrese el número de cédula manualmente (ej: 8-7777-8888)
       </p>
       <input
         ref="qrInputRef"
@@ -528,7 +524,7 @@ onBeforeUnmount(() => {
         @blur="focusQrInput"
         type="text"
         class="h-14 w-full text-lg rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
-        placeholder="Escanee la cédula aquí..."
+        placeholder="Escanee o escriba el número de cédula..."
         autofocus
       />
       <div v-if="loading" class="mt-4 flex items-center justify-center">
@@ -695,7 +691,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Confirmation Form (when visitor exists) -->
-    <div v-if="currentVisit && !showRegisterForm && !showBadge && currentVisitor" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs">
+    <div v-if="currentVisitor && !showRegisterForm && !showBadge" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs">
       <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
         <h3 class="text-base font-medium text-gray-800 dark:text-white">Confirmar Check-In</h3>
       </div>
