@@ -7,7 +7,9 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      features: { optionsAPI: true },
+    }),
     vueDevTools(),
     tailwindcss(),
   ],

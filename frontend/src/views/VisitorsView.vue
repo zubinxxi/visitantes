@@ -45,9 +45,7 @@ function getPhotoUrl(photoPath: string | null): string {
   if (photoPath.startsWith('data:')) return photoPath
   // If it's already a full URL, return as is
   if (photoPath.startsWith('http')) return photoPath + '?t=' + Date.now()
-  // Otherwise, prepend the API base URL
-  const baseUrl = import.meta.env.VITE_API_URL || ''
-  return `${baseUrl}${photoPath}?t=${Date.now()}`
+  return `${photoPath}?t=${Date.now()}`
 }
 
 // Opciones para género
@@ -97,27 +95,6 @@ const stream = ref<MediaStream | null>(null)
 const photoRequired = ref(false)
 const showCamera = ref(false)
 
-async function searchVisitor() {
-  if (!searchQuery.value.trim()) return
-  loading.value = true
-  searched.value = true
-  results.value = []
-  page.value = 1
-
-  try {
-    const response = await api.get(`/visitors/cedula/${searchQuery.value}`)
-    results.value = [response.data]
-    total.value = 1
-    totalPages.value = 1
-  } catch {
-    results.value = []
-    total.value = 0
-    totalPages.value = 0
-  } finally {
-    loading.value = false
-  }
-}
-
 async function loadItems(newPage?: number, newLimit?: number) {
   loading.value = true
   searched.value = true
@@ -156,10 +133,6 @@ function changeLimit(newLimit: number) {
 function setSearch(value: string) {
   searchQuery.value = value
   loadItems(1, limit.value)
-}
-
-async function listAll() {
-  await loadItems(page.value, limit.value)
 }
 
 function viewDetails(visitor: Visitor) {
@@ -232,7 +205,7 @@ async function deleteVisitor(visitor: Visitor) {
   try {
     await api.delete(`/visitors/${visitor.id}`)
     toast.success('Visitante eliminado correctamente')
-    listAll()
+    loadItems()
   } catch (error: unknown) {
     console.error('Error deleting visitor:', error)
     const errMsg = error instanceof Error ? error.message : 'Error al eliminar visitante'
@@ -381,7 +354,7 @@ try {
       toast.success('Visitante registrado correctamente')
     }
     closeForm()
-    listAll()
+    loadItems()
   } catch (error: unknown) {
     console.error('Error saving visitor:', error)
     const errMsg = error instanceof Error ? error.message : 'Error al guardar visitante'
@@ -390,7 +363,7 @@ try {
 }
 
 onMounted(() => {
-  listAll()
+  loadItems()
   loadProvinces()
 })
 
@@ -430,20 +403,7 @@ onUnmounted(stopCamera)
             class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent pl-10 pr-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
           />
         </div>
-        <button
-          @click="searchVisitor"
-          :disabled="loading || !searchQuery.trim()"
-          class="rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:opacity-50"
-        >
-          Buscar
-        </button>
-        <button
-          @click="listAll"
-          :disabled="loading"
-          class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50"
-        >
-          Listar Todos
-        </button>
+
       </div>
     </div>
 

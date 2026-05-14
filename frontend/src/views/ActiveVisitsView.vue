@@ -127,10 +127,11 @@ async function loadActive() {
 async function handleCheckout(id: number) {
   try {
     await api.post(`/visits/${id}/checkout`)
-    activeVisits.value = activeVisits.value.filter((v) => v.id !== id)
-    if (isVisitSelected(activeVisits.value.find((v) => v.id === id) as Visit)) {
-      toggleSelectVisit(activeVisits.value.find((v) => v.id === id) as Visit)
+    const visit = activeVisits.value.find((v) => v.id === id)
+    if (visit && isVisitSelected(visit)) {
+      toggleSelectVisit(visit)
     }
+    activeVisits.value = activeVisits.value.filter((v) => v.id !== id)
     success('Check-out realizado exitosamente')
   } catch (err: unknown) {
     let errMsg = 'Error en check-out'

@@ -80,7 +80,7 @@ async function loadGroups() {
 
 async function loadUserGroups(login: string): Promise<Group[]> {
   try {
-    const res = await api.get(`/security/groups/?login=${login}`)
+    const res = await api.get(`/security/groups?login=${login}`)
     return res.data || []
   } catch {
     return []
@@ -111,6 +111,7 @@ function openCreate() {
 async function openEdit(user: User) {
   editingUser.value = user
   const userGroups = await loadUserGroups(user.login)
+  const userGroupIds = new Set(userGroups.map(g => g.group_id))
   form.value = {
     login: user.login,
     name: user.name || '',
@@ -121,7 +122,7 @@ async function openEdit(user: User) {
     phone: user.phone || '',
     pswd: '',
     pswdConfirm: '',
-    selectedGroups: userGroups,
+    selectedGroups: groups.value.filter(g => userGroupIds.has(g.group_id)),
   }
   showForm.value = true
 }
