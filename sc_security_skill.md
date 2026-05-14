@@ -1,19 +1,17 @@
 ---
 name: sc-security-module
-description: Implementación completa del módulo de seguridad RBAC para proyectos FastAPI + Frontend.
+description: Módulo de seguridad RBAC standalone para proyectos FastAPI + SQLModel + Frontend Vue.
 ---
 
-# Módulo de Seguridad SC/SEC
+# Módulo de Seguridad SC/SEC — RBAC Granular
 
-Este skill proporciona la guía completa para implementar el sistema de seguridad basado en roles (RBAC) utilizado en el proyecto Visitantes AMP. Incluye la estructura de base de datos, lógica de backend en FastAPI y patrones de integración en el frontend.
+Módulo **standalone** de permisos basado en roles (RBAC). Solo requiere sus 6 tablas — cero dependencias del negocio. Incluye esquema de BD, backend FastAPI, stores frontend y protección de rutas/acciones.
 
-## 1. Estructura de Base de Datos (SQLModel)
-
-El módulo utiliza el prefijo `sec_` para tablas de seguridad y `sc_` para auditoría.
+## 1. Tablas del Módulo
 
 ```python
-from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional, List
+from sqlmodel import SQLModel, Field
+from typing import Optional
 from datetime import datetime
 
 # --- Usuarios ---
@@ -23,18 +21,23 @@ class SecUser(SQLModel, table=True):
     pswd: str = Field(max_length=255)
     name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[str] = Field(default=None, max_length=255)
-    active: str = Field(default="Y", max_length=1)
-    priv_admin: str = Field(default="N", max_length=1)
+    active: Optional[str] = Field(default=None, max_length=1)
+    activation_code: Optional[str] = Field(default=None, max_length=32)
+    priv_admin: Optional[str] = Field(default=None, max_length=1)
+    mfa: Optional[str] = Field(default=None, max_length=255)
+    picture: Optional[bytes] = None
     role: Optional[str] = Field(default=None, max_length=128)
+    phone: Optional[str] = Field(default=None, max_length=64)
     pswd_last_updated: Optional[datetime] = None
+    mfa_last_updated: Optional[datetime] = None
 
 # --- Grupos ---
 class SecGroup(SQLModel, table=True):
     __tablename__ = "sec_groups"
     group_id: Optional[int] = Field(default=None, primary_key=True)
-    description: str = Field(max_length=255)
+    description: Optional[str] = Field(default=None, max_length=255)
 
-# --- Relación Usuario-Grupo ---
+# --- Relación Usuario-Grupo (N:M) ---
 class SecUserGroupLink(SQLModel, table=True):
     __tablename__ = "sec_users_groups"
     login: str = Field(primary_key=True, foreign_key="sec_users.login")
@@ -44,25 +47,26 @@ class SecUserGroupLink(SQLModel, table=True):
 class SecApp(SQLModel, table=True):
     __tablename__ = "sec_apps"
     app_name: str = Field(primary_key=True, max_length=128)
-    description: Optional[str] = None
+    app_type: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=255)
 
-# --- Permisos (RBAC) ---
+# --- Permisos (clave compuesta group_id + app_name) ---
 class SecGroupApp(SQLModel, table=True):
     __tablename__ = "sec_groups_apps"
     group_id: int = Field(primary_key=True, foreign_key="sec_groups.group_id")
     app_name: str = Field(primary_key=True, foreign_key="sec_apps.app_name")
-    priv_access: str = Field(default="N", max_length=1)
-    priv_insert: str = Field(default="N", max_length=1)
-    priv_delete: str = Field(default="N", max_length=1)
-    priv_update: str = Field(default="N", max_length=1)
-    priv_export: str = Field(default="N", max_length=1)
-    priv_print: str = Field(default="N", max_length=1)
+    priv_access: Optional[str] = Field(default=None, max_length=1)
+    priv_insert: Optional[str] = Field(default=None, max_length=1)
+    priv_delete: Optional[str] = Field(default=None, max_length=1)
+    priv_update: Optional[str] = Field(default=None, max_length=1)
+    priv_export: Optional[str] = Field(default=None, max_length=1)
+    priv_print: Optional[str] = Field(default=None, max_length=1)
 
 # --- Auditoría ---
 class ScLog(SQLModel, table=True):
     __tablename__ = "sc_log"
     id: Optional[int] = Field(default=None, primary_key=True)
-    inserted_date: datetime = Field(default_factory=datetime.now)
+    inserted_date: Optional[datetime] = Field(default=None)
     username: str = Field(max_length=90)
     application: str = Field(max_length=255)
     action: str = Field(max_length=30)
@@ -70,100 +74,182 @@ class ScLog(SQLModel, table=True):
     description: Optional[str] = None
 ```
 
-## 2. Lógica Core del Backend (FastAPI)
+### Privilegios (columna `Optional[str]`, valor `"Y"` / `"N"` / `None`)
 
-### Seguridad (`core/security.py`)
-Utiliza `bcrypt` para passwords y `python-jose` para JWT.
+| Privilegio | Descripción |
+|------------|-------------|
+| `priv_access` | Ver la página/módulo |
+| `priv_insert` | Crear registros |
+| `priv_update` | Editar registros |
+| `priv_delete` | Eliminar registros |
+| `priv_export` | Exportar datos |
+| `priv_print` | Imprimir |
+
+### Grupos por defecto
+
+| group_id | Descripción |
+|----------|-------------|
+| 1 | Administrador (permisos implícitos — no necesita registros en `sec_groups_apps`) |
+| * | El resto se define por proyecto: `Usuarios`, `Seguridad`, `Admin-Seguridad`, etc. |
+
+## 2. Backend — Core de Seguridad
+
+### Config (`core/config.py`)
 
 ```python
-import bcrypt
-from datetime import datetime, timedelta
-from jose import jwt
+SECRET_KEY: str                    # HMAC para JWT
+ADMIN_GROUP_ID: int = 1            # grupo con permisos implícitos
+ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+```
 
-SECRET_KEY = "tu_llave_secreta"
-ALGORITHM = "HS256"
+### Core Security (`core/security.py`)
+
+bcrypt rounds=12, JWT HS256, UTC-5.
+
+```python
+import bcrypt, hashlib
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+def verify_password(plain: str, hashed: str) -> bool:
+    if hashed.startswith("$2b$") or hashed.startswith("$2a$"):
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    return hashlib.md5(plain.encode()).hexdigest() == hashed
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=60))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+def create_access_token(subject: str, name="", role="", expires_delta=None) -> str:
+    expire = now_panama() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode = {"sub": subject, "exp": expire}
+    if name: to_encode["name"] = name
+    if role: to_encode["role"] = role
+    return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
+
+def decode_access_token(token: str) -> Optional[str]:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"]).get("sub")
+    except JWTError:
+        return None
+
+def create_password_reset_token(subject: str) -> str:
+    expire = now_panama() + timedelta(minutes=15)
+    return jwt.encode({"sub": subject, "exp": expire, "type": "password_reset"}, SECRET_KEY, algorithm="HS256")
+
+def verify_password_reset_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload.get("sub") if payload.get("type") == "password_reset" else None
+    except JWTError:
+        return None
+```
+
+### Timezone (`core/utils.py`)
+
+```python
+TIMEZONE_PANAMA = timezone(timedelta(hours=-5))
+
+def now_panama() -> datetime:           # timezone-aware (para JWT)
+    return datetime.now(TIMEZONE_PANAMA)
+
+def now_panama_naive() -> datetime:     # naive (para columnas datetime de MariaDB)
+    return datetime.now(TIMEZONE_PANAMA).replace(tzinfo=None)
 ```
 
 ### Dependencias (`api/deps.py`)
-El corazón del RBAC es el `require_permission`.
 
-```python
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer
-from app.api.deps import SessionDep # Tu sesión de DB
+| Componente | Propósito |
+|------------|-----------|
+| `SessionDep` | `Annotated[AsyncSession, Depends(get_session)]` |
+| `get_current_user` | Extrae Bearer token, decodifica, busca usuario activo |
+| `get_current_user_optional` | Igual pero devuelve `None` si no hay token |
+| `CurrentUser` | `Annotated[SecUser, Depends(get_current_user)]` |
+| `require_permission(app_name, privilege)` | Factory. Admin bypass (priv_admin o grupo Admin). Consulta `sec_groups_apps`. Soporta `str \| list[str]`. Retorna 403 si no tiene permiso. |
+| `is_user_admin(session, user)` | True si `priv_admin == "Y"` o pertenece al grupo Admin |
 
-security_scheme = HTTPBearer()
+### Endpoints de Auth (`api/v1/auth.py`)
 
-async def get_current_user(token: str = Depends(security_scheme), session: SessionDep):
-    # Decodificar token y buscar usuario en SecUser
-    # Validar que esté activo
-    pass
+| Método | Ruta | Propósito |
+|--------|------|-----------|
+| `POST` | `/auth/login` | Login → token + usuario + group_ids + permisos |
+| `POST` | `/auth/forgot-password` | Token 15min + email vía BackgroundTasks |
+| `POST` | `/auth/reset-password` | Valida token, actualiza password |
+| `POST` | `/auth/change-password` | Cambia password (requiere auth + password actual) |
 
-def require_permission(app_name: str, privilege: str = "priv_access"):
-    async def checker(user: SecUser = Depends(get_current_user), session: SessionDep):
-        if user.priv_admin == "Y": return user
-        # 1. Obtener IDs de grupos del usuario (SecUserGroupLink)
-        # 2. Buscar en SecGroupApp si algún grupo tiene el privilegio en app_name
-        # 3. Si no, lanzar HTTPException 403
-        pass
-    return checker
+**Login Response:**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer",
+  "user": { "login": "x", "name": "x", "email": "x", "priv_admin": "N", "role": "x" },
+  "group_ids": [1, 2],
+  "permissions": [ /* SecGroupApp serializados */ ]
+}
 ```
 
-## 3. Integración en el Frontend (Store pattern)
+### Endpoints de Seguridad (`api/v1/security.py`)
 
-### Gestión de Estado (Pinia/Redux)
-El frontend debe almacenar el token y decodificar los permisos al iniciar sesión.
+| Método | Ruta | Propósito |
+|--------|------|-----------|
+| `POST` | `/security/permissions/upsert` | Crea o actualiza permiso (clave compuesta group_id+app_name) |
+| `GET` | `/security/groups?login=x` | Grupos de un usuario |
+| `GET` | `/security/groups/{id}/users` | Miembros de un grupo |
+| `POST` | `/security/groups/{id}/users/{login}` | Agrega usuario a grupo |
+| `DELETE` | `/security/groups/{id}/users/{login}` | Remueve usuario de grupo |
+| `GET` | `/security/me/permissions` | Permisos consolidados del usuario autenticado |
 
-```javascript
-// Ejemplo en Pinia (Vue)
-export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    token: localStorage.getItem('token') || '',
-    permissions: [],
-    isAdmin: false
-  }),
-  actions: {
-    async login(credentials) {
-      const { data } = await api.post('/auth/login', credentials);
-      this.token = data.access_token;
-      this.permissions = data.permissions; // Lista de objetos SecGroupApp
-      this.isAdmin = data.user.priv_admin === 'Y';
-      localStorage.setItem('token', this.token);
-    },
-    hasPermission(appName, privilege = 'priv_access') {
-      if (this.isAdmin) return true;
-      return this.permissions.some(p => p.app_name === appName && p[privilege] === 'Y');
-    }
-  }
-});
-```
+### SMTP / Emails (`core/emails.py`)
 
-### Directivas/Protección de Rutas
-- **Rutas**: Usar un `Navigation Guard` que verifique `requiresAuth` y el permiso específico definido en la meta-data de la ruta.
-- **Botones**: Ocultar botones o acciones si el usuario no tiene `priv_insert`, `priv_update` o `priv_delete`.
+Envío de correo transaccional con `smtplib`. Soporta TLS/SSL. Si `SMTP_HOST` no está configurado, logea warning sin crashear. Usar `BackgroundTasks` para no bloquear la respuesta.
 
-## 4. Endpoints Requeridos
-- `POST /auth/login`: Retorna Token + Usuario + Permisos consolidados.
-- `POST /auth/forgot-password`: Genera token temporal y envía email (SMTP).
-- `POST /auth/reset-password`: Valida token y actualiza password.
-- `POST /auth/change-password`: Cambia password (requiere auth).
+## 3. Frontend — Stores
 
-## 5. Auditoría (sc_log)
-Cada acción crítica (insert, update, delete) debe registrarse en la tabla `sc_log` capturando:
-- Usuario que lo hizo.
-- Acción realizada.
-- Entidad/Aplicación afectada.
-- IP del cliente.
-- Fecha y hora (UTC-5 Panamá).
+### Permissions Store (`stores/permissions.ts`)
+
+Store Pinia con:
+- **Estado**: `permissions[]`, `groupIds[]`, `privAdmin`
+- **Persistencia en localStorage** con versionado
+- **Computed `isAdmin`**: `privAdmin === 'Y' \|\| groupIds.includes(ADMIN_GROUP_ID)`
+- **Métodos**: `setPermissions()`, `clearPermissions()`, `refreshPermissions()` (consume `GET /security/me/permissions`)
+- **Helpers**: `hasAccess(appName)`, `canCreate()`, `canEdit()`, `canDelete()`, `canExport()`, `canPrint()`
+
+### Auth Store (`stores/auth.ts`)
+
+- `login()`: POST `/auth/login`, guarda token en localStorage, persiste permisos en `permissionsStore`
+- `logout()`: limpia token + permisos
+- `forgotPassword()`, `resetPassword()`, `changePassword()`: wrappers de fetch
+
+### Axios Interceptor (`lib/api.ts`)
+
+- Adjunta `Authorization: Bearer` automáticamente
+- En 401: limpia localStorage y redirige a `/login`
+
+## 4. Frontend — Protección de Rutas y UI
+
+### Router Guard
+
+Cada ruta protegida lleva `meta.appName`. El `beforeEach`:
+1. Auth check → redirect a `/login`
+2. Si tiene `appName` y no es admin → verifica `perms.hasAccess(appName)` → si no, redirect a homepage
+
+### Sidebar
+
+Cada ítem del menú tiene `appName`. `v-if="permissionsStore.hasAccess(item.appName)"`. Secciones enteras se ocultan si ningún ítem es visible.
+
+### Acciones Condicionales
+
+En tablas CRUD, botones condicionados:
+- Nuevo → `canCreate(appName)`
+- Editar → `canEdit(appName)`
+- Eliminar → `canDelete(appName)`
+- Exportar → `canExport(appName)`
+- Imprimir → `canPrint(appName)`
+
+## 5. Convenciones y Detalles
+
+- **bcrypt rounds = 12**
+- **JWT HS256**, claims: `sub` (login), `exp` (timezone-aware), `name`, `role`
+- **Admin bypass**: no consulta BD de permisos si `priv_admin == "Y"` o pertenece al grupo Admin configurado
+- **ScLog**: capturar usuario, acción, app, IP, timestamp en cada operación crítica
+- **Migraciones Alembic**: seed de apps y permisos vía migración
+- **CORS**: configurar orígenes del frontend + localhost dev
