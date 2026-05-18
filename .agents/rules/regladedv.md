@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Visitantes AMP
 
 Dos proyectos independientes — **no monorepo**. Cada comando se ejecuta desde la carpeta del proyecto.
@@ -62,10 +66,12 @@ Usar según corresponda: `vue-best-practices`, `fastapi`, `frontend-design`, `in
 Este documento establece las normas estrictas de comportamiento para la generación de código y asistencia técnica.
 
 ## 1. Idioma de Interacción
+
 - **Obligatorio:** Todas las explicaciones, comentarios de código, documentación y respuestas deben ser exclusivamente en **Español**.
 - Si se detecta un término técnico sin traducción clara, se usará el término en inglés seguido de una breve explicación en español.
 
 ## 2. Fidelidad a la Documentación Oficial
+
 El modelo DEBE regirse estrictamente por los estándares y mejores prácticas de las siguientes fuentes oficiales, evitando patrones obsoletos:
 
 - **Backend (FastAPI):** Referenciar siempre [https://fastapi.tiangolo.com/es/](https://fastapi.tiangolo.com/es/). Priorizar el uso de Pydantic v2 y tipado estático (Type Hints).
@@ -74,29 +80,33 @@ El modelo DEBE regirse estrictamente por los estándares y mejores prácticas de
 - **Diseño y UI (TailAdmin):** Seguir la estructura de componentes y clases de Tailwind CSS basadas en [https://vue-demo.tailadmin.com/](https://vue-demo.tailadmin.com/).
 
 ## 3. Restricciones Técnicas del Entorno
+
 - Sistema Operativo: **Debian 13**.
 - Firewall: **ufw** activo (asegurar que los endpoints propuestos consideren la apertura de puertos si es necesario).
 - Base de Datos: Considerar la integración con **MariaDB** según el histórico del sistema.
-
 
 ## 4. Directrices de Modificación de Código
 
 Estas directrices aplican a toda modificación de código, independientemente de la skill o tecnología involucrada.
 
 ### 4.1 Precisión Quirúrgica
+
 - **Fidelidad al Alcance:** Modifica única y exclusivamente las líneas o funciones solicitadas.
 - **Prohibición de Refactorización Silenciosa:** No cambies nombres de variables, estructuras de bases de datos o lógica circundante para "limpiar" el código, a menos que se pida explícitamente.
 - **Preservación de Estilo:** Mantén el patrón de diseño y las convenciones de nomenclatura detectadas en el código existente (ej. CamelCase o snake_case, no los mezcles).
 
 ### 4.2 Integridad del Sistema
+
 - **Respeto a la Arquitectura:** Antes de sugerir un cambio, analiza cómo afecta a los componentes dependientes (especialmente en entornos multi-tenant o arquitecturas de microservicios).
 - **Consistencia de Datos:** Al proponer cambios en consultas SQL o esquemas, asegura la compatibilidad con los tipos de datos y relaciones existentes.
 - **Comentarios de Cambio:** Si una modificación requiere ajustar una configuración en otro archivo (ej. variable de entorno o ruta), notifícalo al final de la respuesta.
 
 ### 4.3 Verificación y Comunicación
+
 - **Confirmación de Ambigüedad:** Si una instrucción puede interpretarse de forma que rompa la compatibilidad hacia atrás, solicita aclaración antes de proceder.
 - **Bloques Contextuales:** Devuelve suficiente código para entender dónde va el cambio, pero evita reescribir archivos masivos si la modificación es puntual.
 - **Explicaciones Técnicas:** Proporciona una explicación breve de qué se cambió y por qué es seguro para el resto del sistema, solo si la lógica es compleja.
 
 ### 4.4 Control de Regresiones
+
 - Antes de generar la respuesta final, verifica mentalmente que el nuevo código no altera funciones auxiliares ni dependencias compartidas.

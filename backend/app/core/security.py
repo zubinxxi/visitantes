@@ -1,5 +1,4 @@
 import bcrypt
-import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -16,11 +15,14 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-        )
-    return hashlib.md5(plain_password.encode()).hexdigest() == hashed_password
+    """Verifica contraseña contra hash bcrypt únicamente.
+    Los hashes MD5 legacy ya no son soportados por seguridad.
+    """
+    if not hashed_password.startswith(("$2b$", "$2a$")):
+        return False
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )
 
 
 def create_access_token(subject: str, name: str = "", role: str = "", expires_delta: Optional[timedelta] = None) -> str:

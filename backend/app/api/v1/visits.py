@@ -11,7 +11,7 @@ from app.core.utils import now_panama_naive, today_start_panama
 from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
 from app.services.audit_service import ScLog
-from app.schemas.visit import VisitRead, VisitUpdate, VisitListResponse, StatsSummary
+from app.schemas.visit import VisitRead, VisitUpdate, VisitListResponse, StatsSummary, CheckoutByQrRequest, CheckInRequest
 
 logger = logging.getLogger(__name__)
 
@@ -326,15 +326,11 @@ async def get_active_visits(
 
 @router.post("/checkout-by-qr", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
 async def checkout_by_qr(
-    request: dict,
+    request: CheckoutByQrRequest,
     session: SessionDep,
     current_user: CurrentUser,
 ):
-    visit_id = request.get("visit_id")
-    if not visit_id:
-        raise HTTPException(status_code=400, detail="visit_id es requerido")
-    
-    visit = await session.get(Visit, visit_id)
+    visit = await session.get(Visit, request.visit_id)
     if not visit:
         raise HTTPException(status_code=404, detail="Visita no encontrada")
     
@@ -483,8 +479,12 @@ async def update_visit(
     return visit_dict
 
 
-@router.delete("/{visit_id}")
-async def delete_visit(visit_id: int, session: SessionDep):
+@router.delete("/{visit_id}", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
+async def delete_visit(
+    visit_id: int,
+    session: SessionDep,
+    current_user: CurrentUser,
+):
     visit = await session.get(Visit, visit_id)
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
@@ -500,6 +500,13 @@ async def delete_visit(visit_id: int, session: SessionDep):
     )
     for link in result.scalars().all():
         await session.delete(link)
+
+    await _audit(
+        session,
+        username=current_user.login,
+        action="DELETE",
+        description=f"Eliminación visita #{visit_id}",
+    )
 
     await session.delete(visit)
     await session.commit()
@@ -544,40 +551,26 @@ async def get_stats_summary(session: SessionDep) -> StatsSummary:
 
 @router.post("/checkin", response_model=VisitRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("visitors", "priv_insert"))])
 async def create_checkin(
-    request: dict,
+    request: CheckInRequest,
     session: SessionDep,
     current_user: CurrentUser,
 ):
-    id_card_number = request.get("id_card_number")
-    names = request.get("names")
-    surnames = request.get("surnames")
-    gender = request.get("gender", "M")
-    id_num_control = request.get("id_num_control", "")
-    province = request.get("province", "")
-    nationality = request.get("nationality", "")
-    company_represents = request.get("company_represents", "")
-    purpose = request.get("purpose", "")
-    uadm_ids = request.get("uadm_ids", [])
-    building_ids = request.get("building_ids", [])
-    id_type_of_proce = request.get("id_type_of_proce", 6)
-    user_created = request.get("user_created", current_user.login)
-    
     visitor_result = await session.execute(
-        select(Visitor).where(Visitor.id_card_number == id_card_number)
+        select(Visitor).where(Visitor.id_card_number == request.id_card_number)
     )
     visitor = visitor_result.scalars().first()
     
     if not visitor:
         visitor = Visitor(
-            id_card_number=id_card_number,
-            names=names,
-            surnames=surnames,
-            gender=gender,
-            id_num_control=id_num_control,
-            province=province,
-            nationality=nationality,
-            photo="",  # Default empty string for photo
-            user_created=user_created,
+            id_card_number=request.id_card_number,
+            names=request.names,
+            surnames=request.surnames,
+            gender=request.gender,
+            id_num_control=request.id_num_control,
+            province=request.province,
+            nationality=request.nationality,
+            photo="",
+            user_created=current_user.login,
         )
         session.add(visitor)
         await session.flush()
@@ -598,33 +591,33 @@ async def create_checkin(
     
     visit = Visit(
         id_visitors=visitor.id,
-        id_type_of_proce=id_type_of_proce,
-        company_represents=company_represents,
-        purpose=purpose,
+        id_type_of_proce=request.id_type_of_proce,
+        company_represents=request.company_represents,
+        purpose=request.purpose,
         buildings_visited="",
         uadm_visited="",
         check_in=now_panama_naive(),
-        user_created=user_created,
+        user_created=current_user.login,
     )
     session.add(visit)
     
-    if uadm_ids:
-        for uadm_id in uadm_ids:
+    if request.uadm_ids:
+        for uadm_id in request.uadm_ids:
             link = VisitsUadmLink(id_visits=None, id_uadm=uadm_id)
             link.id_visits = visit.id
             session.add(link)
     
-    if building_ids:
-        for building_id in building_ids:
+    if request.building_ids:
+        for building_id in request.building_ids:
             link = VisitsBuildingsLink(id_visits=None, id_building=building_id)
             link.id_visits = visit.id
             session.add(link)
     
     await _audit(
         session,
-        username=user_created,
+        username=current_user.login,
         action="CHECKIN",
-        description=f"Check-in - {names} {surnames}",
+        description=f"Check-in - {request.names} {request.surnames}",
     )
     await session.commit()
     await session.refresh(visit)

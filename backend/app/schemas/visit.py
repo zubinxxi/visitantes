@@ -57,7 +57,13 @@ class StatsSummary(BaseModel):
     unique_visitors: int
 
 
+class CheckoutByQrRequest(BaseModel):
+    """Schema para check-out por QR. Reemplaza dict crudo por seguridad."""
+    visit_id: int
+
+
 class CheckInRequest(BaseModel):
+    """Schema para check-in. user_created se toma del token JWT (current_user)."""
     id_card_number: str
     names: str
     surnames: str
@@ -70,4 +76,4 @@ class CheckInRequest(BaseModel):
     purpose: str = ""
     uadm_ids: list[int] = []
     building_ids: list[int] = []
-    user_created: str = "sysadmin"
+

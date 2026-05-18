@@ -1,11 +1,7 @@
 import axios from 'axios'
 
-const host = window.location.hostname
-const protocol = host === 'localhost' || host === '127.0.0.1'
-  ? window.location.protocol
-  : 'https:'
 const api = axios.create({
-  baseURL: `${protocol}//${host}/api/v1`,
+  baseURL: '/api/v1',
 })
 
 api.interceptors.request.use((config) => {

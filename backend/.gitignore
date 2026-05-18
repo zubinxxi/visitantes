@@ -34,3 +34,7 @@ photos/
 
 # Alembic versions generated (keep migrations dir structure but not generated files)
 alembic/__pycache__/
+
+# Databases
+*.db
+*.sqlite3

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from pydantic import BaseModel
 from sqlmodel import select
 
@@ -18,9 +18,13 @@ from app.schemas.security import (
     ResetPasswordRequest,
 )
 from app.core.emails import send_reset_password_email
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import logging
 
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,7 +35,8 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, session: SessionDep):
+@limiter.limit("5/minute")
+async def login(request: Request, payload: LoginRequest, session: SessionDep):
     result = await session.execute(
         select(SecUser).where(SecUser.login == payload.login)
     )
@@ -79,7 +84,9 @@ async def login(payload: LoginRequest, session: SessionDep):
 
 
 @router.post("/forgot-password")
+@limiter.limit("3/hour")
 async def forgot_password(
+    request: Request,
     payload: ForgotPasswordRequest, 
     session: SessionDep,
     background_tasks: BackgroundTasks,

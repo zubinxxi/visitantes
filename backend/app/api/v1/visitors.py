@@ -3,6 +3,8 @@ from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
 import uuid
+import io
+from PIL import Image
 
 from app.api.deps import SessionDep, CurrentUser, CurrentUser, require_permission
 from app.models.visitor import Visitor
@@ -12,10 +14,43 @@ from app.core.config import settings
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
+# Magic bytes para validación MIME real del contenido del archivo
+IMAGE_SIGNATURES = {
+    b'\xff\xd8\xff': 'image/jpeg',
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'RIFF': 'image/webp',  # WebP empieza con RIFF....WEBP
+}
+
+
+def _validate_image_content(content: bytes) -> None:
+    """Valida que el contenido sea realmente una imagen por sus magic bytes.
+    Luego sanitiza re-abriendo con Pillow para descartar payloads maliciosos.
+    """
+    is_valid = False
+    for signature in IMAGE_SIGNATURES:
+        if content[:len(signature)] == signature:
+            is_valid = True
+            break
+    if not is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail="El contenido del archivo no corresponde a una imagen válida (JPEG, PNG o WebP).",
+        )
+    # Sanitizar: re-abrir con Pillow para verificar integridad
+    try:
+        img = Image.open(io.BytesIO(content))
+        img.verify()
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo está corrupto o no es una imagen válida.",
+        )
+
+
 router = APIRouter(prefix="/visitors", tags=["visitors"])
 
 
-@router.get("/", response_model=PaginatedVisitorsResponse)
+@router.get("/", response_model=PaginatedVisitorsResponse, dependencies=[Depends(require_permission("visitors", "priv_access"))])
 async def get_all_visitors(
     session: SessionDep,
     page: int = Query(1, ge=1),
@@ -59,7 +94,7 @@ async def get_all_visitors(
     }
 
 
-@router.get("/{visitor_id}", response_model=VisitorRead)
+@router.get("/{visitor_id}", response_model=VisitorRead, dependencies=[Depends(require_permission("visitors", "priv_access"))])
 async def get_visitor(visitor_id: int, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
@@ -93,7 +128,7 @@ async def create_visitor(visitor_in: VisitorCreate, session: SessionDep):
     return visitor
 
 
-@router.put("/{visitor_id}", response_model=VisitorRead)
+@router.put("/{visitor_id}", response_model=VisitorRead, dependencies=[Depends(require_permission("visitors", "priv_update"))])
 async def update_visitor(visitor_id: int, visitor_in: VisitorUpdate, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
@@ -108,7 +143,7 @@ async def update_visitor(visitor_id: int, visitor_in: VisitorUpdate, session: Se
     return visitor
 
 
-@router.delete("/{visitor_id}")
+@router.delete("/{visitor_id}", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
 async def delete_visitor(visitor_id: int, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
@@ -144,6 +179,8 @@ async def upload_photo(visitor_id: int, file: UploadFile, session: SessionDep):
             detail=f"Archivo muy grande. Máximo: {MAX_FILE_SIZE // (1024*1024)}MB",
         )
 
+    _validate_image_content(content)
+
     with open(filepath, "wb") as buffer:
         buffer.write(content)
 
@@ -162,6 +199,7 @@ async def upload_photo(visitor_id: int, file: UploadFile, session: SessionDep):
 async def upload_photo_temp(
     session: SessionDep,
     file: UploadFile,
+    current_user: CurrentUser,
     cedula: str = None,
 ):
     ext = Path(file.filename or "").suffix.lower()
@@ -188,6 +226,8 @@ async def upload_photo_temp(
             status_code=400,
             detail=f"Archivo muy grande. Máximo: {MAX_FILE_SIZE // (1024*1024)}MB",
         )
+
+    _validate_image_content(content)
 
     with open(filepath, "wb") as buffer:
         buffer.write(content)

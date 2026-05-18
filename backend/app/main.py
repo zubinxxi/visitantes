@@ -1,9 +1,14 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from fastapi import FastAPI, Depends, APIRouter, Query, Body, HTTPException, status
+from fastapi import FastAPI, Depends, APIRouter, Query, Body, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.database import get_session, async_engine
@@ -46,13 +51,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await async_engine.dispose()
 
 
+# ── Rate Limiter ──
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="visitorsdb",
     description="Sistema de Gestión de Visitantes",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
 )
 
+# Registrar rate limiter en el estado de la app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS restringido ──
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -61,9 +76,26 @@ app.add_middleware(
         "http://127.0.0.1:5173"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+
+# ── Middleware de Headers de Seguridad HTTP ──
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(self), microphone=()"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 photos_dir = Path(settings.PHOTOS_DIR)
 photos_dir.mkdir(parents=True, exist_ok=True)
@@ -205,6 +237,15 @@ async def create_user(
     current_user: SecUser = Depends(require_permission("sec_users", "priv_insert")),
 ):
     obj_data = obj.model_dump()
+    
+    # Prevenir escalación de priv_admin
+    if obj_data.get("priv_admin") == "Y":
+        if not await is_user_admin(session, current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos para crear usuarios con privilegios de Administrador",
+            )
+
     obj_data["pswd"] = hash_password(obj.pswd)
     return await users_crud.create(session, SecUserCreate(**obj_data))
 
@@ -224,6 +265,13 @@ async def update_user(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tiene permisos para editar usuarios del grupo Administrador",
+            )
+        
+        # Prevenir escalación: Admin-Seguridad no puede asignar priv_admin='Y'
+        if obj.priv_admin == "Y":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permisos para asignar privilegios de Administrador",
             )
 
     update_data = obj.model_dump(exclude_unset=True)
