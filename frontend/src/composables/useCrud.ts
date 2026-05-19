@@ -25,7 +25,7 @@ export interface PaginatedResponse {
   total_pages: number
 }
 
-export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 'Datos') {
+export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 'Datos', idField: string = 'id') {
   const toast = useToast()
   const items = ref<CrudItem[]>([])
   const loading = ref(false)
@@ -169,7 +169,8 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
       })
 
       if (editingItem.value) {
-        await api.put(`${normalizedBaseUrl}/${editingItem.value.id}`, payload)
+        const itemId = editingItem.value[idField]
+        await api.put(`${normalizedBaseUrl}/${itemId}`, payload)
         toast.success('Registro actualizado correctamente')
       } else {
         await api.post(`${normalizedBaseUrl}/`, payload)
@@ -178,9 +179,19 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
 
       closeForm()
       await loadItems()
-    } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Error al guardar'
-      toast.error(error.value)
+    } catch (e: any) {
+      let errMsg = 'Error al guardar'
+      if (e.response?.data?.detail) {
+        if (Array.isArray(e.response.data.detail)) {
+          errMsg = e.response.data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        } else if (typeof e.response.data.detail === 'string') {
+          errMsg = e.response.data.detail
+        }
+      } else if (e.message) {
+        errMsg = e.message
+      }
+      error.value = errMsg
+      toast.error(errMsg)
     }
   }
 
@@ -198,13 +209,24 @@ export function useCrud(baseUrl: string, columns: CrudColumn[], title: string = 
     if (!deletingItem.value) return
     error.value = ''
     try {
-      await api.delete(`${normalizedBaseUrl}/${deletingItem.value.id}`)
+      const itemId = deletingItem.value[idField]
+      await api.delete(`${normalizedBaseUrl}/${itemId}`)
       toast.success('Registro eliminado correctamente')
       closeDelete()
       await loadItems()
-    } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : 'Error al eliminar'
-      toast.error(error.value)
+    } catch (e: any) {
+      let errMsg = 'Error al eliminar'
+      if (e.response?.data?.detail) {
+        if (Array.isArray(e.response.data.detail)) {
+          errMsg = e.response.data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        } else if (typeof e.response.data.detail === 'string') {
+          errMsg = e.response.data.detail
+        }
+      } else if (e.message) {
+        errMsg = e.message
+      }
+      error.value = errMsg
+      toast.error(errMsg)
     }
   }
 

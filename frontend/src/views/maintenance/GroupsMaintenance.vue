@@ -16,7 +16,7 @@ const {
   loadItems, openCreate, openEdit, closeForm, saveItem,
   openDelete, closeDelete, confirmDelete,
   setSearch, changePage, changeLimit, exportToXlsx, printTable,
-} = useCrud('/maintenance/groups', columns, 'Grupos')
+} = useCrud('/maintenance/groups', columns, 'Grupos', 'group_id')
 
 onMounted(loadItems)
 </script>

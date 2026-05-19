@@ -38,6 +38,21 @@ const editingItem = ref<Uadm | null>(null)
 const showDeleteConfirm = ref(false)
 const deletingItem = ref<Uadm | null>(null)
 
+const page = ref(1)
+const limit = ref(10)
+const total = ref(0)
+const totalPages = ref(0)
+const search = ref('')
+const searchTimeout = ref<number | null>(null)
+
+const limitOptions = [
+  { value: 10, label: '10' },
+  { value: 20, label: '20' },
+  { value: 30, label: '30' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+]
+
 const institutions = ref<CatalogItem[]>([])
 const provinces = ref<CatalogItem[]>([])
 const typeUadms = ref<CatalogItem[]>([])
@@ -61,13 +76,54 @@ const statusOptions: { label: string; value: boolean }[] = [
 async function loadUadms() {
   loading.value = true
   try {
-    const res = await api.get('/maintenance/uadms/', { params: { limit: 200 } })
-    uadms.value = res.data.items || res.data
+    const params: Record<string, any> = {
+      page: page.value,
+      limit: limit.value,
+    }
+    if (search.value) {
+      params.search = search.value
+    }
+    const res = await api.get('/maintenance/uadms/', { params })
+    uadms.value = res.data.items || []
+    total.value = res.data.total || 0
+    totalPages.value = res.data.total_pages || 0
   } catch (e) {
     console.error('Error loading uadms:', e)
   } finally {
     loading.value = false
   }
+}
+
+function changePage(newPage: number) {
+  if (newPage >= 1 && newPage <= totalPages.value) {
+    page.value = newPage
+    loadUadms()
+  }
+}
+
+function changeLimit(newLimit: any) {
+  const limitVal = newLimit && typeof newLimit === 'object' ? newLimit.value : newLimit
+  limit.value = limitVal
+  page.value = 1
+  loadUadms()
+}
+
+function onSearchInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  search.value = value
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = setTimeout(() => {
+    page.value = 1
+    loadUadms()
+  }, 300) as unknown as number
+}
+
+function clearSearch() {
+  search.value = ''
+  page.value = 1
+  loadUadms()
 }
 
 async function loadCatalogs() {
@@ -151,8 +207,17 @@ async function saveItem() {
     }
     closeForm()
     await loadUadms()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al guardar'
+  } catch (e: any) {
+    let errMsg = 'Error al guardar'
+    if (e.response?.data?.detail) {
+      if (Array.isArray(e.response.data.detail)) {
+        errMsg = e.response.data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+      } else if (typeof e.response.data.detail === 'string') {
+        errMsg = e.response.data.detail
+      }
+    } else if (e.message) {
+      errMsg = e.message
+    }
     showError(errMsg)
   }
 }
@@ -174,8 +239,17 @@ async function deleteItem() {
     success('UADM eliminada correctamente')
     closeDelete()
     await loadUadms()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al eliminar'
+  } catch (e: any) {
+    let errMsg = 'Error al eliminar'
+    if (e.response?.data?.detail) {
+      if (Array.isArray(e.response.data.detail)) {
+        errMsg = e.response.data.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+      } else if (typeof e.response.data.detail === 'string') {
+        errMsg = e.response.data.detail
+      }
+    } else if (e.message) {
+      errMsg = e.message
+    }
     showError(errMsg)
   }
 }
@@ -191,15 +265,39 @@ onMounted(() => {
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div>
         <h1 class="text-lg font-medium text-gray-800 dark:text-white">Unidades Administrativas</h1>
-        <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ uadms.length }} registros</p>
+        <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ total }} registros</p>
       </div>
-      <button
-        v-if="perms.canCreate('maint_uadms')"
-        @click="openCreate"
-        class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
-      >
-        Nueva UADM
-      </button>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="relative">
+          <input
+            type="text"
+            :value="search"
+            @input="onSearchInput"
+            placeholder="Buscar..."
+            class="h-10 w-full sm:w-64 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 pl-10 pr-10 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+          />
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <button
+            v-if="search"
+            @click="clearSearch"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <button
+          v-if="perms.canCreate('maint_uadms')"
+          @click="openCreate"
+          class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+        >
+          Nueva UADM
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="flex justify-center py-20">
@@ -270,6 +368,57 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100 dark:border-gray-800 px-6 py-4">
+        <div class="flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
+          <span>Mostrar</span>
+          <Multiselect
+            :model-value="limitOptions.find(o => o.value === limit)"
+            @update:model-value="changeLimit"
+            :options="limitOptions"
+            :searchable="false"
+            :close-on-select="true"
+            :show-labels="false"
+            label="label"
+            track-by="value"
+            class="multiselect-dark w-24"
+          />
+          <span>registros por página</span>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button
+            @click="changePage(page - 1)"
+            :disabled="page <= 1"
+            class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <template v-for="p in totalPages" :key="p">
+            <button
+              v-if="p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1)"
+              @click="changePage(p)"
+              :class="['rounded-lg px-3 py-1.5 text-theme-sm', p === page ? 'bg-brand-500 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700']"
+            >
+              {{ p }}
+            </button>
+            <span v-else-if="p === page - 2 || p === page + 2" class="px-1 text-gray-400">...</span>
+          </template>
+
+          <button
+            @click="changePage(page + 1)"
+            :disabled="page >= totalPages"
+            class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
@@ -58,13 +58,13 @@ class BadgeResponse(BaseModel):
 router = APIRouter(prefix="/checkin", tags=["checkin"])
 
 
-def _build_log_entry(username: str, action: str, description: str) -> ScLog:
+def _build_log_entry(username: str, action: str, description: str, ip_user: str = "127.0.0.1") -> ScLog:
     return ScLog(
         inserted_date=now_panama_naive(),
         username=username,
         application="visitorsdb",
         creator=username,
-        ip_user="127.0.0.1",
+        ip_user=ip_user,
         action=action,
         description=description,
     )
@@ -175,7 +175,7 @@ async def process_qr(payload: QrProcessRequest, session: SessionDep, user: Curre
 
 
 @router.post("/register", response_model=QrProcessResponse)
-async def register_and_checkin(payload: RegisterRequest, session: SessionDep, user: CurrentUser):
+async def register_and_checkin(payload: RegisterRequest, session: SessionDep, user: CurrentUser, request: Request):
     parsed = _parse_qr_data(payload.raw_data)
     
     id_card_number = parsed["id_card_number"]
@@ -221,11 +221,13 @@ async def register_and_checkin(payload: RegisterRequest, session: SessionDep, us
     )
     session.add(visit)
     
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host) if request else "127.0.0.1"
     session.add(
         _build_log_entry(
             username=user.login,
             action="CHECKIN",
             description=f"Check-in - {names} {surnames}",
+            ip_user=ip_user,
         )
     )
     
@@ -252,7 +254,7 @@ async def register_and_checkin(payload: RegisterRequest, session: SessionDep, us
 
 
 @router.post("/confirm", response_model=VisitRead)
-async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, user: CurrentUser):
+async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, user: CurrentUser, request: Request):
     if payload.visit_id:
         visit = await session.get(Visit, payload.visit_id)
         if not visit:
@@ -310,11 +312,13 @@ async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, u
     if payload.purpose:
         visit.purpose = payload.purpose
     
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host) if request else "127.0.0.1"
     session.add(
         _build_log_entry(
             username=user.login,
             action="CHECKIN",
             description=f"Check-in confirmado visita #{visit.id}",
+            ip_user=ip_user,
         )
     )
     
@@ -325,7 +329,7 @@ async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, u
 
 
 @router.get("/visits/{visit_id}/badge", response_model=BadgeResponse)
-async def get_visit_badge(visit_id: int, session: SessionDep):
+async def get_visit_badge(visit_id: int, session: SessionDep, current_user: CurrentUser):
     visit = await session.get(Visit, visit_id)
     if not visit:
         raise HTTPException(status_code=404, detail="Visita no encontrada")

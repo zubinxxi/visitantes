@@ -2,7 +2,8 @@ import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 
 from app.core.config import settings
 from app.core.utils import now_panama
@@ -29,7 +30,7 @@ def create_access_token(subject: str, name: str = "", role: str = "", expires_de
     expire = now_panama() + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode = {"sub": subject, "exp": expire}
+    to_encode = {"sub": subject, "exp": int(expire.timestamp())}
     if name:
         to_encode["name"] = name
     if role:
@@ -47,7 +48,7 @@ def decode_access_token(token: str) -> Optional[str]:
 
 def create_password_reset_token(subject: str) -> str:
     expire = now_panama() + timedelta(minutes=15)
-    to_encode = {"sub": subject, "exp": expire, "type": "password_reset"}
+    to_encode = {"sub": subject, "exp": int(expire.timestamp()), "type": "password_reset"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 

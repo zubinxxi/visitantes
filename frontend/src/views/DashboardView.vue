@@ -8,6 +8,7 @@ const PANAMA_TZ = 'America/Panama'
 const stats = ref<VisitStats | null>(null)
 const recentVisits = ref<Visit[]>([])
 const loading = ref(true)
+const imageErrors = ref<Record<number, boolean>>({})
 
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('es-PA', { timeZone: PANAMA_TZ, hour: '2-digit', minute: '2-digit' })
@@ -142,7 +143,13 @@ onMounted(async () => {
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
                       <div class="h-9 w-9 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                        <img v-if="visit.photo" :src="getPhotoUrl(visit.photo)" class="h-full w-full object-cover" :alt="visit.names" />
+                        <img 
+                          v-if="visit.photo && !imageErrors[visit.id]" 
+                          :src="getPhotoUrl(visit.photo)" 
+                          @error="imageErrors[visit.id] = true"
+                          class="h-full w-full object-cover" 
+                          :alt="visit.names" 
+                        />
                         <div v-else class="flex h-full w-full items-center justify-center bg-brand-50 dark:bg-brand-500/10 text-brand-500 dark:text-brand-400 font-semibold text-theme-sm">
                           {{ visit.names?.charAt(0) || '?' }}{{ visit.surnames?.charAt(0) || '' }}
                         </div>

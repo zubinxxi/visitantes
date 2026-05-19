@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+import re
 from typing import Optional
 from datetime import datetime
 
@@ -81,6 +82,19 @@ class SecUserBase(BaseModel):
 class SecUserCreate(SecUserBase):
     pswd: str
 
+    @field_validator("pswd")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una minúscula")
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+        return v
+
 
 class SecUserRead(SecUserBase):
     pswd_last_updated: Optional[datetime] = None
@@ -97,10 +111,38 @@ class SecUserUpdate(BaseModel):
     phone: Optional[str] = None
     pswd: Optional[str] = None
 
+    @field_validator("pswd")
+    @classmethod
+    def validate_password_complexity(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una minúscula")
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+        return v
+
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una minúscula")
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+        return v
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -110,3 +152,16 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una mayúscula")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una minúscula")
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+        return v

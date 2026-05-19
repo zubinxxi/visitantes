@@ -1,6 +1,7 @@
 import logging
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
@@ -10,6 +11,7 @@ from app.models.visit import Visit, VisitsUadmLink, VisitsBuildingsLink
 from app.core.utils import now_panama_naive, today_start_panama
 from app.models.visitor import Visitor
 from app.models.maintenance import Uadm, Building
+from app.models.security import SecUser
 from app.services.audit_service import ScLog
 from app.schemas.visit import VisitRead, VisitUpdate, VisitListResponse, StatsSummary, CheckoutByQrRequest, CheckInRequest
 
@@ -18,13 +20,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/visits", tags=["visits"])
 
 
-async def _audit(session: AsyncSession, username: str, action: str, description: str):
+async def _audit(session: AsyncSession, username: str, action: str, description: str, ip_user: str = "127.0.0.1"):
     log_entry = ScLog(
         inserted_date=now_panama_naive(),
         username=username,
         application="visitorsdb",
         creator=username,
-        ip_user="127.0.0.1",
+        ip_user=ip_user,
         action=action,
         description=description
     )
@@ -113,7 +115,7 @@ async def get_visits_paginated(
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=10, ge=1, le=100),
     search: str = Query(default=""),
-    active_filter: str = Query(default=""),
+    active_filter: Literal["true", "false", ""] = Query(default=""),
     date: str = Query(default="", description="Filter by date (YYYY-MM-DD)"),
     start_date: str = Query(default="", description="Filter by start date (YYYY-MM-DD)"),
     end_date: str = Query(default="", description="Filter by end date (YYYY-MM-DD)"),
@@ -324,31 +326,36 @@ async def get_active_visits(
     return visit_list
 
 
-@router.post("/checkout-by-qr", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
+@router.post("/checkout-by-qr")
 async def checkout_by_qr(
-    request: CheckoutByQrRequest,
-    session: SessionDep,
+    payload: CheckoutByQrRequest, 
+    session: SessionDep, 
     current_user: CurrentUser,
+    request: Request,
 ):
-    visit = await session.get(Visit, request.visit_id)
+    # Buscar visita en proceso
+    visit = await session.get(Visit, payload.visit_id)
     if not visit:
-        raise HTTPException(status_code=404, detail="Visita no encontrada")
+        raise HTTPException(status_code=404, detail="Visita no encontrada o QR inválido")
     
-    if visit.check_out:
-        raise HTTPException(status_code=400, detail="La visita ya tiene check-out registrado")
-    
-    visitor = await session.get(Visitor, visit.id_visitors)
+    if visit.check_out is not None:
+        raise HTTPException(status_code=400, detail="Esta visita ya tiene un Check-out registrado")
     
     visit.check_out = now_panama_naive()
-
-    await _audit(
-        session,
-        username=current_user.login,
-        action="CHECKOUT",
-        description=f"Checkout by QR - {visitor.names} {visitor.surnames}",
-    )
+    
     await session.commit()
     await session.refresh(visit)
+    
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host)
+    await _audit(
+        session, 
+        current_user.login, 
+        "CHECKOUT_VISIT_QR", 
+        f"Visit {visit.id} checked out using QR scanner.",
+        ip_user
+    )
+
+    visitor = await session.get(Visitor, visit.id_visitors)
 
     return {
         "visit_id": visit.id,
@@ -363,6 +370,7 @@ async def checkout_by_id(
     visit_id: int,
     session: SessionDep,
     current_user: CurrentUser,
+    request: Request,
 ):
     visit = await session.get(Visit, visit_id)
     if not visit:
@@ -375,11 +383,13 @@ async def checkout_by_id(
     
     visit.check_out = now_panama_naive()
 
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host)
     await _audit(
         session,
         username=current_user.login,
         action="CHECKOUT",
         description=f"Checkout visita #{visit.id} - {visitor.names} {visitor.surnames}",
+        ip_user=ip_user
     )
     await session.commit()
     await session.refresh(visit)
@@ -404,6 +414,7 @@ async def update_visit(
     update_data: VisitUpdate,
     session: SessionDep,
     current_user: CurrentUser,
+    request: Request,
 ):
     visit = await session.get(Visit, visit_id)
     if not visit:
@@ -444,11 +455,13 @@ async def update_visit(
         else:
             visit.buildings_visited = ""
 
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host)
     await _audit(
         session,
         username=current_user.login,
         action="UPDATE",
         description=f"Actualización visita #{visit.id}",
+        ip_user=ip_user
     )
     await session.commit()
     await session.refresh(visit)
@@ -479,11 +492,12 @@ async def update_visit(
     return visit_dict
 
 
-@router.delete("/{visit_id}", dependencies=[Depends(require_permission("visitors", "priv_delete"))])
+@router.delete("/{visit_id}")
 async def delete_visit(
-    visit_id: int,
-    session: SessionDep,
-    current_user: CurrentUser,
+    visit_id: int, 
+    session: SessionDep, 
+    current_user: SecUser = Depends(require_permission("visitors", "priv_delete")),
+    request: Request = None,
 ):
     visit = await session.get(Visit, visit_id)
     if not visit:
@@ -501,15 +515,17 @@ async def delete_visit(
     for link in result.scalars().all():
         await session.delete(link)
 
-    await _audit(
-        session,
-        username=current_user.login,
-        action="DELETE",
-        description=f"Eliminación visita #{visit_id}",
-    )
-
     await session.delete(visit)
     await session.commit()
+    
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host) if request else "127.0.0.1"
+    await _audit(
+        session, 
+        current_user.login, 
+        "DELETE_VISIT", 
+        f"Visit ID {visit_id} deleted manually by user {current_user.login}",
+        ip_user
+    )
     return {"message": "Visit deleted successfully"}
 
 
@@ -549,26 +565,27 @@ async def get_stats_summary(session: SessionDep) -> StatsSummary:
         )
 
 
-@router.post("/checkin", response_model=VisitRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("visitors", "priv_insert"))])
+@router.post("/checkin")
 async def create_checkin(
-    request: CheckInRequest,
-    session: SessionDep,
+    payload: CheckInRequest, 
+    session: SessionDep, 
     current_user: CurrentUser,
+    request: Request,
 ):
     visitor_result = await session.execute(
-        select(Visitor).where(Visitor.id_card_number == request.id_card_number)
+        select(Visitor).where(Visitor.id_card_number == payload.id_card_number)
     )
     visitor = visitor_result.scalars().first()
     
     if not visitor:
         visitor = Visitor(
-            id_card_number=request.id_card_number,
-            names=request.names,
-            surnames=request.surnames,
-            gender=request.gender,
-            id_num_control=request.id_num_control,
-            province=request.province,
-            nationality=request.nationality,
+            id_card_number=payload.id_card_number,
+            names=payload.names,
+            surnames=payload.surnames,
+            gender=payload.gender,
+            id_num_control=payload.id_num_control,
+            province=payload.province,
+            nationality=payload.nationality,
             photo="",
             user_created=current_user.login,
         )
@@ -591,33 +608,34 @@ async def create_checkin(
     
     visit = Visit(
         id_visitors=visitor.id,
-        id_type_of_proce=request.id_type_of_proce,
-        company_represents=request.company_represents,
-        purpose=request.purpose,
+        id_type_of_proce=payload.id_type_of_proce,
+        company_represents=payload.company_represents,
+        purpose=payload.purpose,
         buildings_visited="",
         uadm_visited="",
         check_in=now_panama_naive(),
         user_created=current_user.login,
     )
     session.add(visit)
+    await session.flush()
     
-    if request.uadm_ids:
-        for uadm_id in request.uadm_ids:
-            link = VisitsUadmLink(id_visits=None, id_uadm=uadm_id)
-            link.id_visits = visit.id
+    if payload.uadm_ids:
+        for uadm_id in payload.uadm_ids:
+            link = VisitsUadmLink(id_visits=visit.id, id_uadm=uadm_id)
             session.add(link)
     
-    if request.building_ids:
-        for building_id in request.building_ids:
-            link = VisitsBuildingsLink(id_visits=None, id_building=building_id)
-            link.id_visits = visit.id
+    if payload.building_ids:
+        for building_id in payload.building_ids:
+            link = VisitsBuildingsLink(id_visits=visit.id, id_building=building_id)
             session.add(link)
     
+    ip_user = request.headers.get("X-Forwarded-For", request.client.host) if request else "127.0.0.1"
     await _audit(
         session,
         username=current_user.login,
         action="CHECKIN",
-        description=f"Check-in - {request.names} {request.surnames}",
+        description=f"Check-in - {payload.names} {payload.surnames}",
+        ip_user=ip_user
     )
     await session.commit()
     await session.refresh(visit)

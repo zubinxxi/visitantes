@@ -126,8 +126,9 @@ function changePage(newPage: number) {
   }
 }
 
-function changeLimit(newLimit: number) {
-  loadItems(1, newLimit)
+function changeLimit(newLimit: any) {
+  const limitVal = newLimit && typeof newLimit === 'object' ? newLimit.value : newLimit
+  loadItems(1, limitVal)
 }
 
 function setSearch(value: string) {
@@ -513,8 +514,8 @@ onUnmounted(stopCamera)
         <div class="flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <span>Mostrando</span>
           <Multiselect
-            :model-value="limit"
-            @update:model-value="(val: any) => changeLimit(val?.value ?? val)"
+            :model-value="limitOptions.find(o => o.value === limit)"
+            @update:model-value="changeLimit"
             :options="limitOptions"
             :searchable="false"
             :close-on-select="true"

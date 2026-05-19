@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import SessionDep
+from app.api.deps import SessionDep, CurrentUser
 from app.services.qr_service import parse_cedula_qr
 from app.models.visitor import Visitor
 from app.schemas.visitor import VisitorRead
@@ -26,7 +26,7 @@ class QrParseResponse(BaseModel):
 
 
 @router.post("/parse", response_model=QrParseResponse)
-async def parse_qr(payload: QrParseRequest, session: SessionDep):
+async def parse_qr(payload: QrParseRequest, session: SessionDep, current_user: CurrentUser):
     parsed = parse_cedula_qr(payload.raw_data)
     response = QrParseResponse(
         cedula=parsed.get("cedula", payload.raw_data),

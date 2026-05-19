@@ -17,7 +17,7 @@ const {
   loadItems, openCreate, openEdit, closeForm, saveItem,
   openDelete, closeDelete, confirmDelete,
   setSearch, changePage, changeLimit, exportToXlsx, printTable,
-} = useCrud('/maintenance/apps', columns, 'Aplicaciones')
+} = useCrud('/maintenance/apps', columns, 'Aplicaciones', 'app_name')
 
 onMounted(loadItems)
 </script>

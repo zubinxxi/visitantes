@@ -297,7 +297,7 @@ function onSearchClear() {
         <div class="flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <span>Mostrar</span>
           <Multiselect
-            :model-value="limit"
+            :model-value="limitOptions.find(o => o.value === limit)"
             @update:model-value="(val: any) => onLimitChange(val?.value ?? val)"
             :options="limitOptions"
             :searchable="false"

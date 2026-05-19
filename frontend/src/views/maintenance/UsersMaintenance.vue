@@ -27,6 +27,21 @@ interface Group {
 const users = ref<User[]>([])
 const groups = ref<Group[]>([])
 
+const page = ref(1)
+const limit = ref(10)
+const total = ref(0)
+const totalPages = ref(0)
+const search = ref('')
+const searchTimeout = ref<number | null>(null)
+
+const limitOptions = [
+  { value: 10, label: '10' },
+  { value: 20, label: '20' },
+  { value: 30, label: '30' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+]
+
 // Filtrar grupos: si no es admin real, no ve el grupo "Administradores" (ID 1)
 const filteredGroups = computed(() => {
   if (perms.isAdmin) return groups.value
@@ -38,6 +53,7 @@ const showForm = ref(false)
 const editingUser = ref<User | null>(null)
 const showDeleteConfirm = ref(false)
 const deletingUser = ref<string | null>(null)
+const originalGroups = ref<number[]>([])
 
 const form = ref({
   login: '',
@@ -60,13 +76,54 @@ const selectOptions: { label: string; value: string }[] = [
 async function loadUsers() {
   loading.value = true
   try {
-    const res = await api.get('/maintenance/users/', { params: { limit: 200 } })
-    users.value = res.data.items || res.data
+    const params: Record<string, any> = {
+      page: page.value,
+      limit: limit.value,
+    }
+    if (search.value) {
+      params.search = search.value
+    }
+    const res = await api.get('/maintenance/users/', { params })
+    users.value = res.data.items || []
+    total.value = res.data.total || 0
+    totalPages.value = res.data.total_pages || 0
   } catch (e) {
     console.error('Error loading users:', e)
   } finally {
     loading.value = false
   }
+}
+
+function changePage(newPage: number) {
+  if (newPage >= 1 && newPage <= totalPages.value) {
+    page.value = newPage
+    loadUsers()
+  }
+}
+
+function changeLimit(newLimit: any) {
+  const limitVal = newLimit && typeof newLimit === 'object' ? newLimit.value : newLimit
+  limit.value = limitVal
+  page.value = 1
+  loadUsers()
+}
+
+function onSearchInput(event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  search.value = value
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = setTimeout(() => {
+    page.value = 1
+    loadUsers()
+  }, 300) as unknown as number
+}
+
+function clearSearch() {
+  search.value = ''
+  page.value = 1
+  loadUsers()
 }
 
 async function loadGroups() {
@@ -111,7 +168,8 @@ function openCreate() {
 async function openEdit(user: User) {
   editingUser.value = user
   const userGroups = await loadUserGroups(user.login)
-  const userGroupIds = new Set(userGroups.map(g => g.group_id))
+  originalGroups.value = userGroups.map(g => g.group_id)
+  const userGroupIds = new Set(originalGroups.value)
   form.value = {
     login: user.login,
     name: user.name || '',
@@ -152,19 +210,22 @@ async function saveUser() {
     if (editingUser.value) {
       if (form.value.pswd) payload.pswd = form.value.pswd
       await api.put(`/maintenance/users/${form.value.login}`, payload)
+      
       const currentGroups = form.value.selectedGroups.map(g => g.group_id)
-      const allGroups = groups.value.map(g => g.group_id)
-      for (const gid of allGroups) {
-        if (currentGroups.includes(gid)) {
-          await api.post(`/security/groups/${gid}/users/${form.value.login}`).catch(() => {})
-        } else {
-          await api.delete(`/security/groups/${gid}/users/${form.value.login}`).catch(() => {})
-        }
+      const groupsToAdd = currentGroups.filter(gid => !originalGroups.value.includes(gid))
+      const groupsToRemove = originalGroups.value.filter(gid => !currentGroups.includes(gid))
+
+      for (const gid of groupsToAdd) {
+        await api.post(`/security/groups/${gid}/users/${form.value.login}`)
       }
+      for (const gid of groupsToRemove) {
+        await api.delete(`/security/groups/${gid}/users/${form.value.login}`)
+      }
+      
       success('Usuario actualizado correctamente')
     } else {
       payload.pswd = form.value.pswd
-      await api.post('/maintenance/users', payload)
+      await api.post('/maintenance/users/', payload)
       for (const g of form.value.selectedGroups) {
         await api.post(`/security/groups/${g.group_id}/users/${form.value.login}`).catch(() => {})
       }
@@ -172,8 +233,18 @@ async function saveUser() {
     }
     closeForm()
     await loadUsers()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al guardar'
+  } catch (err: unknown) {
+    let errMsg = 'Error al guardar'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     showError(errMsg)
   }
 }
@@ -212,15 +283,39 @@ onMounted(() => {
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <div>
         <h1 class="text-lg font-medium text-gray-800 dark:text-white">Usuarios</h1>
-        <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ users.length }} registros</p>
+        <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ total }} registros</p>
       </div>
-      <button
-        v-if="perms.canCreate('sec_users')"
-        @click="openCreate"
-        class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
-      >
-        Nuevo Usuario
-      </button>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="relative">
+          <input
+            type="text"
+            :value="search"
+            @input="onSearchInput"
+            placeholder="Buscar..."
+            class="h-10 w-full sm:w-64 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 pl-10 pr-10 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+          />
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <button
+            v-if="search"
+            @click="clearSearch"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <button
+          v-if="perms.canCreate('sec_users')"
+          @click="openCreate"
+          class="h-10 rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+        >
+          Nuevo Usuario
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="flex justify-center py-20">
@@ -305,6 +400,57 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100 dark:border-gray-800 px-6 py-4">
+        <div class="flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
+          <span>Mostrar</span>
+          <Multiselect
+            :model-value="limitOptions.find(o => o.value === limit)"
+            @update:model-value="changeLimit"
+            :options="limitOptions"
+            :searchable="false"
+            :close-on-select="true"
+            :show-labels="false"
+            label="label"
+            track-by="value"
+            class="multiselect-dark w-24"
+          />
+          <span>registros por página</span>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button
+            @click="changePage(page - 1)"
+            :disabled="page <= 1"
+            class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <template v-for="p in totalPages" :key="p">
+            <button
+              v-if="p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1)"
+              @click="changePage(p)"
+              :class="['rounded-lg px-3 py-1.5 text-theme-sm', p === page ? 'bg-brand-500 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700']"
+            >
+              {{ p }}
+            </button>
+            <span v-else-if="p === page - 2 || p === page + 2" class="px-1 text-gray-400">...</span>
+          </template>
+
+          <button
+            @click="changePage(page + 1)"
+            :disabled="page >= totalPages"
+            class="rounded-lg p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 

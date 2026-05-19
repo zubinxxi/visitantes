@@ -34,7 +34,7 @@ from app.schemas.security import (
     SecUserCreate, SecUserRead, SecUserUpdate,
 )
 from app.core.security import hash_password
-from sqlmodel import select
+from sqlmodel import select, delete
  
 
 # ID del grupo Administrador (desde configuración)
@@ -119,6 +119,29 @@ def build_crud_router(
 ):
     router = APIRouter(prefix=f"/api/v1/maintenance/{prefix}", tags=[f"maintenance-{prefix}"])
 
+    # Determinar si la clave primaria del modelo es numérica
+    from sqlalchemy import inspect
+    mapper = inspect(crud.model)
+    pk_is_int = False
+    if mapper.primary_key:
+        try:
+            pk_type = mapper.primary_key[0].type.python_type
+            if issubclass(pk_type, int):
+                pk_is_int = True
+        except Exception:
+            pass
+
+    def parse_id(item_id: str):
+        if pk_is_int:
+            try:
+                return int(item_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El ID debe ser un número entero",
+                )
+        return item_id
+
     # Si app_name es lista, el primero es el principal (CRUD completo), 
     # los demás son solo para lectura (access).
     primary_app = app_name[0] if isinstance(app_name, list) else app_name
@@ -151,20 +174,20 @@ def build_crud_router(
         )
 
     @router.get("/{item_id}", response_model=read_model, dependencies=deps_get)
-    async def get_by_id(session: SessionDep, item_id: int):
-        return await crud.get_by_id(session, item_id)
+    async def get_by_id(session: SessionDep, item_id: str):
+        return await crud.get_by_id(session, parse_id(item_id))
 
     @router.post("/", response_model=read_model, status_code=201, dependencies=deps_post)
     async def create_item(session: SessionDep, obj: create_schema = Body()):
         return await crud.create(session, obj)
 
     @router.put("/{item_id}", response_model=read_model, dependencies=deps_put)
-    async def update_item(session: SessionDep, item_id: int, obj: update_schema = Body()):
-        return await crud.update(session, item_id, obj)
+    async def update_item(session: SessionDep, item_id: str, obj: update_schema = Body()):
+        return await crud.update(session, parse_id(item_id), obj)
 
     @router.delete("/{item_id}", dependencies=deps_del)
-    async def delete_item(session: SessionDep, item_id: int):
-        return await crud.delete(session, item_id)
+    async def delete_item(session: SessionDep, item_id: str):
+        return await crud.delete(session, parse_id(item_id))
 
     return router
 
@@ -292,6 +315,10 @@ async def delete_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tiene permisos para eliminar usuarios del grupo Administrador",
             )
+    # Limpiar relaciones con grupos antes de eliminar para evitar registros huérfanos
+    await session.execute(
+        delete(SecUserGroupLink).where(SecUserGroupLink.login == item_id)
+    )
     return await users_crud.delete(session, item_id)
 
 
