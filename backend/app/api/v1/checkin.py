@@ -71,6 +71,43 @@ def _build_log_entry(username: str, action: str, description: str, ip_user: str 
 
 
 def _parse_qr_data(raw_data: str) -> dict:
+    stripped = raw_data.strip()
+
+    _PROVINCE_FIX = {
+        "PANAM": "PANAMÁ",
+        "PANAM OESTE": "PANAMÁ OESTE",
+        "COCLE": "COCLÉ",
+        "COLON": "COLÓN",
+        "CHIRIQUI": "CHIRIQUÍ",
+        "DARIEN": "DARIEN",
+        "VERAGUAS": "VERAGUAS",
+        "HERRERA": "HERRERA",
+        "LOS SANTOS": "LOS SANTOS",
+        "BOCAS DEL TORO": "BOCAS DEL TORO",
+        "COMARCA KUNA YALA": "COMARCA KUNA YALA",
+        "COMARCA EMBERA WOUNAAN": "COMARCA EMBERÁ WOUNAAN",
+        "COMARCA NGOBE BUGLE": "COMARCA NGOBE BUGLE",
+        "COMARCA KUNA MADUGANDI": "COMARCA KUNA MADUGANDÍ",
+    }
+    _NATIONALITY_FIX = {
+        "PANAMEA": "PANAMEÑA",
+    }
+
+    if "]" in stripped:
+        parts = stripped.split("]")
+        id_card_number = parts[0].strip().replace("'", "-") if parts[0] else ""
+        province = parts[5].strip().split(",")[0].strip() if len(parts) > 5 and parts[5].strip() else ""
+        nationality = parts[7].strip() if len(parts) > 7 and parts[7].strip() else ""
+        return {
+            "id_card_number": id_card_number,
+            "names": parts[1].strip() if len(parts) > 1 else "",
+            "surnames": parts[2].strip() if len(parts) > 2 else "",
+            "gender": parts[4].strip().upper() if len(parts) > 4 and parts[4].strip() else "M",
+            "province": _PROVINCE_FIX.get(province, province),
+            "nationality": _NATIONALITY_FIX.get(nationality, nationality),
+            "id_num_control": parts[16].strip() if len(parts) > 16 and parts[16].strip() else "",
+        }
+
     parts = raw_data.split("|")
     
     if len(parts) >= 2:
