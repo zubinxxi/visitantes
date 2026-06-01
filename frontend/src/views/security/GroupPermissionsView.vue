@@ -128,9 +128,19 @@ async function togglePermission(appName: string, privKey: string) {
     if (!permissions.value[appName]) permissions.value[appName] = {}
     permissions.value[appName]![privKey] = newVal
     success('Permiso actualizado')
-  } catch (e: unknown) {
-    console.error('Error updating permission:', e)
-    showError('Error al actualizar permiso')
+  } catch (err: unknown) {
+    let errMsg = 'Error al actualizar permiso'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
+    showError(errMsg)
   } finally {
     saving.value = null
   }

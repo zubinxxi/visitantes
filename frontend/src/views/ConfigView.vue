@@ -68,8 +68,18 @@ async function saveConfig() {
     }
     closeForm()
     loadConfigs()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al guardar'
+  } catch (err: unknown) {
+    let errMsg = 'Error al guardar'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     showError(errMsg)
   }
 }
@@ -80,8 +90,18 @@ async function deleteConfig(item: ConfigItem) {
     await api.delete(`/config/${item.key}`)
     success('Configuración eliminada')
     loadConfigs()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al eliminar'
+  } catch (err: unknown) {
+    let errMsg = 'Error al eliminar'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     showError(errMsg)
   }
 }

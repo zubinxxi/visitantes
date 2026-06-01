@@ -207,9 +207,18 @@ async function deleteVisitor(visitor: Visitor) {
     await api.delete(`/visitors/${visitor.id}`)
     toast.success('Visitante eliminado correctamente')
     loadItems()
-  } catch (error: unknown) {
-    console.error('Error deleting visitor:', error)
-    const errMsg = error instanceof Error ? error.message : 'Error al eliminar visitante'
+  } catch (err: unknown) {
+    let errMsg = 'Error al eliminar visitante'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     toast.error(errMsg)
   }
 }
@@ -356,9 +365,18 @@ try {
     }
     closeForm()
     loadItems()
-  } catch (error: unknown) {
-    console.error('Error saving visitor:', error)
-    const errMsg = error instanceof Error ? error.message : 'Error al guardar visitante'
+  } catch (err: unknown) {
+    let errMsg = 'Error al guardar visitante'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        errMsg = detail[0].msg
+      } else if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     toast.error(errMsg)
   }
 }
