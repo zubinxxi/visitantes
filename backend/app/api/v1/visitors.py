@@ -98,7 +98,7 @@ async def get_all_visitors(
 async def get_visitor(visitor_id: int, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
-        raise HTTPException(status_code=404, detail="Visitor not found")
+        raise HTTPException(status_code=404, detail="Visitante no encontrado")
     return visitor
 
 
@@ -109,7 +109,7 @@ async def get_visitor_by_cedula(cedula: str, session: SessionDep):
     )
     visitor = result.scalars().first()
     if not visitor:
-        raise HTTPException(status_code=404, detail="Visitor not found")
+        raise HTTPException(status_code=404, detail="Visitante no encontrado")
     return visitor
 
 
@@ -119,7 +119,7 @@ async def create_visitor(visitor_in: VisitorCreate, session: SessionDep):
         select(Visitor).where(Visitor.id_card_number == visitor_in.id_card_number)
     )
     if existing.scalars().first():
-        raise HTTPException(status_code=409, detail="Visitor with this cedula already exists")
+        raise HTTPException(status_code=409, detail="El visitante con esta cédula ya existe")
 
     visitor = Visitor(**visitor_in.model_dump())
     session.add(visitor)
@@ -132,7 +132,7 @@ async def create_visitor(visitor_in: VisitorCreate, session: SessionDep):
 async def update_visitor(visitor_id: int, visitor_in: VisitorUpdate, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
-        raise HTTPException(status_code=404, detail="Visitor not found")
+        raise HTTPException(status_code=404, detail="Visitante no encontrado")
 
     update_data = visitor_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -147,11 +147,11 @@ async def update_visitor(visitor_id: int, visitor_in: VisitorUpdate, session: Se
 async def delete_visitor(visitor_id: int, session: SessionDep):
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
-        raise HTTPException(status_code=404, detail="Visitor not found")
+        raise HTTPException(status_code=404, detail="Visitante no encontrado")
 
     await session.delete(visitor)
     await session.commit()
-    return {"message": "Visitor deleted successfully"}
+    return {"message": "Visitante eliminado exitosamente"}
 
 
 @router.post("/{visitor_id}/upload-photo")
@@ -165,7 +165,7 @@ async def upload_photo(visitor_id: int, file: UploadFile, session: SessionDep):
 
     visitor = await session.get(Visitor, visitor_id)
     if not visitor:
-        raise HTTPException(status_code=404, detail="Visitor not found")
+        raise HTTPException(status_code=404, detail="Visitante no encontrado")
 
     settings.PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 

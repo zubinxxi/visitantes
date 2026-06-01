@@ -118,7 +118,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
     async def get_by_id(self, session: AsyncSession, item_id: Any) -> ReadSchemaType:
         item = await session.get(self.model, item_id)
         if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise HTTPException(status_code=404, detail="Elemento no encontrado")
         return self.read_schema.model_validate(item)
 
     async def create(self, session: AsyncSession, obj_in: CreateSchemaType) -> ReadSchemaType:
@@ -133,7 +133,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
     ) -> ReadSchemaType:
         item = await session.get(self.model, item_id)
         if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise HTTPException(status_code=404, detail="Elemento no encontrado")
         update_data = obj_in.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(item, key, value)
@@ -144,7 +144,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
     async def delete(self, session: AsyncSession, item_id: Any) -> dict:
         item = await session.get(self.model, item_id)
         if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise HTTPException(status_code=404, detail="Elemento no encontrado")
         await session.delete(item)
         await session.commit()
-        return {"message": "Deleted successfully"}
+        return {"message": "Eliminado exitosamente"}

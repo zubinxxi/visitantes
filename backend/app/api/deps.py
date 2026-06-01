@@ -50,7 +50,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail="Autenticación requerida",
         )
     
     token = credentials.credentials
@@ -59,7 +59,7 @@ async def get_current_user(
     if not login:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="Token inválido o expirado",
         )
     
     result = await session.execute(select(SecUser).where(SecUser.login == login))
@@ -68,7 +68,7 @@ async def get_current_user(
     if not user or user.active != "Y":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
+            detail="Usuario no encontrado o inactivo",
         )
     
     return user
@@ -120,9 +120,7 @@ def require_permission(app_name: str | list[str], privilege: str = "priv_access"
         has_permission = permission_result.first() is not None
 
         if not has_permission:
-            detail_msg = f"Permisos insuficientes para {app_name}:{privilege}"
-            if isinstance(app_name, list):
-                detail_msg = f"Permisos insuficientes (requiere uno de {', '.join(app_name)}) para {privilege}"
+            detail_msg = "Permisos insuficientes"
             
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

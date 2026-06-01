@@ -8,7 +8,7 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 def _require_env(key: str) -> str:
     value = os.getenv(key)
     if value is None:
-        raise ValueError(f"Missing required environment variable: {key}")
+        raise ValueError(f"Falta la variable de entorno requerida: {key}")
     return value
 
 

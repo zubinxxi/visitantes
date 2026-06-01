@@ -140,7 +140,7 @@ async def get_visits_paginated(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Formato de fecha inválido: '{date}'. Use YYYY-MM-DD.",
+                detail=f"Formato de fecha inválido: '{date}'. Use AAAA-MM-DD.",
             )
     
     if start_date:
@@ -151,7 +151,7 @@ async def get_visits_paginated(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Formato de fecha inicial inválido: '{start_date}'. Use YYYY-MM-DD.",
+                detail=f"Formato de fecha inicial inválido: '{start_date}'. Use AAAA-MM-DD.",
             )
 
     if end_date:
@@ -162,7 +162,7 @@ async def get_visits_paginated(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Formato de fecha final inválido: '{end_date}'. Use YYYY-MM-DD.",
+                detail=f"Formato de fecha final inválido: '{end_date}'. Use AAAA-MM-DD.",
             )
 
     if search:
@@ -501,7 +501,7 @@ async def delete_visit(
 ):
     visit = await session.get(Visit, visit_id)
     if not visit:
-        raise HTTPException(status_code=404, detail="Visit not found")
+        raise HTTPException(status_code=404, detail="Visita no encontrada")
 
     result = await session.execute(
         select(VisitsUadmLink).where(VisitsUadmLink.id_visits == visit_id)
@@ -526,7 +526,7 @@ async def delete_visit(
         f"Visit ID {visit_id} deleted manually by user {current_user.login}",
         ip_user
     )
-    return {"message": "Visit deleted successfully"}
+    return {"message": "Visita eliminada exitosamente"}
 
 
 @router.get("/stats/summary", response_model=StatsSummary, dependencies=[Depends(require_permission("visitors", "priv_access"))])

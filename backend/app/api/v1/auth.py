@@ -45,13 +45,13 @@ async def login(request: Request, payload: LoginRequest, session: SessionDep):
     if not user or not verify_password(payload.password, user.pswd):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail="Credenciales inválidas",
         )
 
     if user.active != "Y":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive",
+            detail="La cuenta de usuario está inactiva",
         )
 
     token = create_access_token(subject=user.login, name=user.name or "", role=user.role or "")
