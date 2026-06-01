@@ -266,8 +266,16 @@ async function deleteUser() {
     success('Usuario eliminado correctamente')
     closeDelete()
     await loadUsers()
-  } catch (e: unknown) {
-    const errMsg = e instanceof Error ? e.message : 'Error al eliminar'
+  } catch (err: unknown) {
+    let errMsg = 'Error al eliminar'
+    if (err && typeof err === 'object' && 'response' in err) {
+      const detail = (err as any).response?.data?.detail
+      if (typeof detail === 'string') {
+        errMsg = detail
+      }
+    } else if (err instanceof Error) {
+      errMsg = err.message
+    }
     showError(errMsg)
   }
 }

@@ -43,6 +43,7 @@ class ConfirmCheckInRequest(BaseModel):
     building_ids: List[int] = []
     company_represents: str = ""
     purpose: str = ""
+    id_type_of_proce: Optional[int] = None
 
 
 class BadgeResponse(BaseModel):
@@ -160,7 +161,18 @@ def _parse_qr_data(raw_data: str) -> dict:
             "nationality": "",
             "id_num_control": ""
         }
-    
+
+    if stripped:
+        return {
+            "id_card_number": stripped,
+            "names": "",
+            "surnames": "",
+            "gender": "M",
+            "province": "",
+            "nationality": "",
+            "id_num_control": "",
+        }
+
     raise HTTPException(
         status_code=400,
         detail="Formato QR inválido. Escanee el código QR o ingrese un número de cédula válido (ej: 8-7777-8888)"
@@ -348,6 +360,8 @@ async def confirm_checkin(payload: ConfirmCheckInRequest, session: SessionDep, u
         visit.company_represents = payload.company_represents
     if payload.purpose:
         visit.purpose = payload.purpose
+    if payload.id_type_of_proce is not None:
+        visit.id_type_of_proce = payload.id_type_of_proce
     
     ip_user = request.headers.get("X-Forwarded-For", request.client.host) if request else "127.0.0.1"
     session.add(

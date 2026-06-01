@@ -35,6 +35,7 @@ interface Visitor {
 
 interface Uadm { id: number; name: string }
 interface Building { id: number; description: string }
+interface Procedure { id: number; description: string }
 
 const labelSizes: readonly LabelSize[] = LABEL_SIZES
 const defaultSize: LabelSize = LABEL_SIZES[0] as LabelSize
@@ -63,10 +64,11 @@ interface BadgeData {
 const badgeData = ref<BadgeData | null>(null)
 const badgeVisit = ref<Visit | null>(null)
 const confirmCompanyRepresents = ref('')
-const confirmPurpose = ref('')
 
 const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
+const procedureOptions = ref<Procedure[]>([])
+const selectedProcedure = ref<Procedure | null>(null)
 const genderOptions = [
   { value: 'M', label: 'Masculino' },
   { value: 'F', label: 'Femenino' },
@@ -116,12 +118,14 @@ const photoRequired = ref(false)
 
 async function loadOptions() {
   try {
-    const [uadmRes, buildingRes] = await Promise.all([
+    const [uadmRes, buildingRes, procRes] = await Promise.all([
       api.get('/maintenance/uadms/', { params: { limit: 100 } }),
       api.get('/maintenance/buildings/', { params: { limit: 100 } }),
+      api.get('/maintenance/procedures/', { params: { limit: 100 } }),
     ])
     uadmOptions.value = uadmRes.data.items || uadmRes.data
     buildingOptions.value = buildingRes.data.items || buildingRes.data
+    procedureOptions.value = procRes.data.items || procRes.data
   } catch (e) {
     console.error('Error loading options:', e)
   }
@@ -350,12 +354,14 @@ function confirmCheckIn() {
   const buildingIds = selectedBuildings.value.map((b) => b.id)
   
   loading.value = true
-  const payload: { visitor_id: number; uadm_ids: number[]; building_ids: number[]; company_represents: string; purpose: string } = {
+  const procId = selectedProcedure.value?.id || 6
+  const payload: { visitor_id: number; uadm_ids: number[]; building_ids: number[]; company_represents: string; purpose: string; id_type_of_proce: number } = {
     visitor_id: currentVisitor.value.id,
     uadm_ids: uadmIds,
     building_ids: buildingIds,
     company_represents: confirmCompanyRepresents.value,
-    purpose: confirmPurpose.value,
+    purpose: selectedProcedure.value?.description || '',
+    id_type_of_proce: procId,
   }
   
   api.post('/checkin/confirm', payload)
@@ -369,9 +375,9 @@ function confirmCheckIn() {
     badgeVisit.value = {
       id: visitId,
       id_visitors: currentVisitor.value!.id,
-      id_type_of_proce: 6,
+      id_type_of_proce: procId,
       company_represents: confirmCompanyRepresents.value,
-      purpose: confirmPurpose.value,
+      purpose: selectedProcedure.value?.description || '',
       buildings_visited: selectedBuildings.value.map((b) => String(b.id)).join(','),
       uadm_visited: selectedUadms.value.map((u) => String(u.id)).join(';'),
       check_in: checkInTime,
@@ -488,8 +494,8 @@ function resetForm() {
   badgeVisit.value = null
   selectedUadms.value = []
   selectedBuildings.value = []
+  selectedProcedure.value = null
   confirmCompanyRepresents.value = ''
-  confirmPurpose.value = ''
   stopCamera()
   focusQrInput()
 }
@@ -514,7 +520,7 @@ onBeforeUnmount(() => {
     <div v-if="!qrScanned" class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xs p-6 mb-6">
       <h3 class="text-base font-medium text-gray-800 dark:text-white mb-4">Escanear Cédula</h3>
       <p class="text-theme-sm text-gray-500 dark:text-gray-400 mb-4">
-        Escanee el código QR de la cédula o ingrese el número de cédula manualmente (ej: 8-7777-8888)
+        Escanee el código QR de la cédula o ingrese el número de cédula o pasaporte manualmente
       </p>
       <input
         ref="qrInputRef"
@@ -523,7 +529,7 @@ onBeforeUnmount(() => {
         @blur="focusQrInput"
         type="text"
         class="h-14 w-full text-lg rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2 text-theme-sm text-gray-800 dark:text-gray-100 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
-        placeholder="Escanee o escriba el número de cédula..."
+        placeholder="Escanee cédula o escriba cédula / pasaporte..."
         autofocus
       />
       <div v-if="loading" class="mt-4 flex items-center justify-center">
@@ -764,13 +770,18 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
-              Propósito de la visita
+              Propósito de la visita <span class="text-error-500">*</span>
             </label>
-            <input
-              v-model="confirmPurpose"
-              type="text"
-              class="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent px-4 py-2.5 text-theme-sm text-gray-800 dark:text-gray-100"
-              placeholder="Motivo de la visita"
+            <Multiselect
+              v-model="selectedProcedure"
+              :options="procedureOptions"
+              :searchable="true"
+              :close-on-select="true"
+              :multiple="false"
+              placeholder="Seleccione el propósito..."
+              label="description"
+              track-by="id"
+              class="multiselect-dark"
             />
           </div>
         </div>

@@ -88,10 +88,9 @@ const filteredNavItems = computed(() =>
   navItems.filter((item) => perms.hasAccess(item.appName)),
 )
 
-const filteredMaintenanceItems = computed(() => {
-  if (!perms.isAdmin) return []
-  return maintenanceItems.filter((item) => perms.hasAccess(item.appName))
-})
+const filteredMaintenanceItems = computed(() =>
+  maintenanceItems.filter((item) => perms.hasAccess(item.appName)),
+)
 
 const filteredSecurityItems = computed(() => {
   return securityItems.filter((item) => perms.hasAccess(item.appName))
