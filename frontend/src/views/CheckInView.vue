@@ -34,7 +34,7 @@ interface Visitor {
 }
 
 interface Uadm { id: number; name: string }
-interface Building { id: number; description: string }
+interface Building { id: number; description: string; code?: string }
 interface Procedure { id: number; description: string }
 
 const labelSizes: readonly LabelSize[] = LABEL_SIZES

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import QRCode from 'qrcode'
+import api from '@/lib/api'
 
 const PANAMA_TZ = 'America/Panama'
+
+const buildingColors = ref<Record<number, string>>({})
 
 interface Props {
   visitId?: number
@@ -42,6 +45,26 @@ function isBuildingSelected(colIndex: number): boolean {
   return buildingIds.value.includes(targetId)
 }
 
+function buildingColorFor(colIndex: number): string {
+  const targetId = colIndex === 6 ? 7 : colIndex + 1
+  return buildingColors.value[targetId] || '#000'
+}
+
+async function loadBuildingColors() {
+  if (Object.keys(buildingColors.value).length) return
+  try {
+    const res = await api.get('/maintenance/buildings/', { params: { limit: 100 } })
+    const items = res.data.items || res.data || []
+    const map: Record<number, string> = {}
+    for (const b of items) {
+      map[b.id] = b.code || '#000'
+    }
+    buildingColors.value = map
+  } catch (e) {
+    console.error('Error cargando colores de edificios:', e)
+  }
+}
+
 function formatCheckInPanama(dateStr: string): string {
   if (!dateStr) return ''
   const date = new Date(dateStr)
@@ -78,6 +101,7 @@ async function generateQrCode() {
 
 onMounted(() => {
   generateQrCode()
+  loadBuildingColors()
 })
 </script>
 
@@ -137,7 +161,7 @@ onMounted(() => {
                         :style="{
                           height: '18px',
                           width: '14.28%',
-                          backgroundColor: isBuildingSelected(idx) ? '#000' : '#fff',
+                          backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
                           border: '0.5px solid #000',
                         }">
                     </td>
@@ -202,7 +226,7 @@ onMounted(() => {
                     :style="{
                       height: '16px',
                       width: '14.28%',
-                      backgroundColor: isBuildingSelected(idx) ? '#000' : '#fff',
+                      backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
                       border: '0.5px solid #000',
                     }">
                 </td>
@@ -273,7 +297,7 @@ onMounted(() => {
                     :style="{
                       height: '15px',
                       width: '14.28%',
-                      backgroundColor: isBuildingSelected(idx) ? '#000' : '#fff',
+                      backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
                       border: '0.5px solid #000',
                     }">
                 </td>
@@ -346,7 +370,7 @@ onMounted(() => {
                         :style="{
                           height: '12px',
                           width: '14.28%',
-                          backgroundColor: isBuildingSelected(idx) ? '#000' : '#fff',
+                          backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
                           border: '0.5px solid #000',
                         }">
                     </td>

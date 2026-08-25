@@ -9,7 +9,7 @@ import BaseModal from '@/components/Modal.vue'
 import Multiselect from 'vue-multiselect'
 
 interface Uadm { id: number; name: string }
-interface Building { id: number; description: string }
+interface Building { id: number; description: string; code?: string }
 
 const { success, error: showError } = useToast()
 const { selectedVisits, toggleSelectVisit, isVisitSelected, clearSelection } = useBadgePrinter()
