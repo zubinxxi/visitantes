@@ -165,6 +165,8 @@ async function printReport() {
           <td>${formatDateTime(v.check_in).time}</td>
           <td>${v.check_out ? formatDateTime(v.check_out).time : 'Activa'}</td>
           <td>${v.purpose || ''}</td>
+          <td>${v.uadms_names || ''}</td>
+          <td>${v.buildings_names || ''}</td>
         </tr>
       `
     })
@@ -197,6 +199,8 @@ async function printReport() {
                 <th>In</th>
                 <th>Out</th>
                 <th>Propósito</th>
+                <th>UADMs</th>
+                <th>Edificios</th>
               </tr>
             </thead>
             <tbody>
