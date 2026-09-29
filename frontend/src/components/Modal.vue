@@ -70,7 +70,7 @@ function handleOverlayClick(event: MouseEvent) {
         >
           <div
             v-if="modelValue"
-            :class="['w-full', maxWidthClass, 'mx-auto overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xl']"
+            :class="['w-full', maxWidthClass, 'mx-auto max-h-[85vh] flex flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-theme-xl']"
           >
             <!-- Header -->
             <div v-if="title || $slots.header" class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 px-6 py-4">
@@ -88,7 +88,7 @@ function handleOverlayClick(event: MouseEvent) {
             </div>
 
             <!-- Body -->
-            <div class="p-6">
+            <div class="flex-1 overflow-y-auto p-6">
               <slot />
             </div>
 

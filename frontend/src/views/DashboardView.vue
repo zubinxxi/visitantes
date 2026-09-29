@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '@/lib/api'
 import type { VisitStats, Visit } from '@/types/visit'
+import Modal from '@/components/Modal.vue'
 
 const PANAMA_TZ = 'America/Panama'
 
@@ -9,6 +10,8 @@ const stats = ref<VisitStats | null>(null)
 const recentVisits = ref<Visit[]>([])
 const loading = ref(true)
 const imageErrors = ref<Record<number, boolean>>({})
+const showDetailsModal = ref(false)
+const selectedVisit = ref<Visit | null>(null)
 
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('es-PA', { timeZone: PANAMA_TZ, hour: '2-digit', minute: '2-digit' })
@@ -23,6 +26,19 @@ function getPhotoUrl(photoPath: string | null): string {
   if (photoPath.startsWith('data:')) return photoPath
   if (photoPath.startsWith('http')) return photoPath
   return `${photoPath}`
+}
+
+function viewDetails(visit: Visit) {
+  selectedVisit.value = visit
+  showDetailsModal.value = true
+}
+
+function formatDateTime(dateStr: string) {
+  const d = new Date(dateStr)
+  return {
+    date: d.toLocaleDateString('es-PA', { timeZone: PANAMA_TZ, day: '2-digit', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('es-PA', { timeZone: PANAMA_TZ, hour: '2-digit', minute: '2-digit' }),
+  }
 }
 
 onMounted(async () => {
@@ -136,6 +152,7 @@ onMounted(async () => {
                   <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400">Cédula</th>
                   <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400">Fecha</th>
                   <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400">Estado</th>
+                  <th class="px-6 py-3 text-left text-theme-xs font-medium uppercase text-gray-400">Acciones</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -172,6 +189,14 @@ onMounted(async () => {
                     >
                       {{ visit.check_out ? 'Finalizada' : 'Activa' }}
                     </span>
+                  </td>
+                  <td class="px-6 py-4">
+                    <button
+                      @click="viewDetails(visit)"
+                      class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-theme-xs font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750"
+                    >
+                      Ver
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -240,4 +265,57 @@ onMounted(async () => {
       </div>
     </template>
   </div>
+
+  <Modal v-model="showDetailsModal" title="Detalles de la Visita" size="lg">
+    <template v-if="selectedVisit">
+      <div class="space-y-4">
+        <div class="flex items-center gap-4">
+          <div class="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-500 dark:text-brand-400 font-bold text-xl">
+            {{ selectedVisit.names?.charAt(0) || '?' }}{{ selectedVisit.surnames?.charAt(0) || '' }}
+          </div>
+          <div>
+            <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ selectedVisit.names }} {{ selectedVisit.surnames }}</p>
+            <p class="text-theme-sm text-gray-500 dark:text-gray-400">{{ selectedVisit.id_card_number }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Check-In</p>
+            <p class="text-theme-sm font-medium text-gray-800 dark:text-white">
+              {{ formatDateTime(selectedVisit.check_in).date }} {{ formatDateTime(selectedVisit.check_in).time }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Check-Out</p>
+            <p class="text-theme-sm font-medium text-gray-800 dark:text-white">
+              {{ selectedVisit.check_out ? formatDateTime(selectedVisit.check_out).time : 'Aún activo' }}
+            </p>
+          </div>
+          <div class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Propósito</p>
+            <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ selectedVisit.purpose || 'No especificado' }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Empresa</p>
+            <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ selectedVisit.company_represents || 'No especificado' }}</p>
+          </div>
+        </div>
+
+        <div v-if="selectedVisit.uadms_names" class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+          <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Unidades Administrativas Visitadas</p>
+          <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ selectedVisit.uadms_names }}</p>
+        </div>
+      </div>
+    </template>
+
+    <template #footer>
+      <button
+        @click="showDetailsModal = false"
+        class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-theme-sm font-medium text-gray-700 dark:text-gray-200 shadow-theme-xs hover:bg-gray-50 dark:hover:bg-gray-750"
+      >
+        Cerrar
+      </button>
+    </template>
+  </Modal>
 </template>

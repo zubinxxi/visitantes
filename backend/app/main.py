@@ -164,13 +164,18 @@ def build_crud_router(
         page: int = Query(1, ge=1, description="Número de página"),
         limit: int = Query(10, ge=1, le=1000, description="Registros por página"),
         search: str = Query(None, description="Texto de búsqueda"),
+        ids: str = Query(None, description="IDs separados por comas"),
     ):
+        id_list = None
+        if ids:
+            id_list = [int(i) for i in ids.split(",") if i.strip().isdigit()]
         return await crud.get_all(
             session, 
             page=page, 
             limit=limit, 
             search=search if search else None,
             search_fields=search_fields,
+            ids=id_list,
         )
 
     @router.get("/{item_id}", response_model=read_model, dependencies=deps_get)

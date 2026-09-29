@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '@/lib/api'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
@@ -33,7 +33,7 @@ interface Visitor {
   nationality: string
 }
 
-interface Uadm { id: number; name: string }
+interface Uadm { id: number; name: string; id_type_uadm?: number }
 interface Building { id: number; description: string; code?: string }
 interface Procedure { id: number; description: string }
 
@@ -69,6 +69,8 @@ const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
 const procedureOptions = ref<Procedure[]>([])
 const selectedProcedure = ref<Procedure | null>(null)
+const uadmLoading = ref(false)
+let uadmSearchTimer: ReturnType<typeof setTimeout> | null = null
 const genderOptions = [
   { value: 'M', label: 'Masculino' },
   { value: 'F', label: 'Femenino' },
@@ -91,6 +93,17 @@ const uadmSelectRef = ref<any>(null)
 const selectedBuildings = ref<Building[]>([])
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const buildingSelectRef = ref<any>(null)
+
+const showBuildings = computed(() => {
+  if (selectedUadms.value.length === 0) return false
+  return selectedUadms.value.every(u => u.id_type_uadm != null && u.id_type_uadm >= 1 && u.id_type_uadm <= 6)
+})
+
+watch(showBuildings, (newVal) => {
+  if (!newVal) {
+    selectedBuildings.value = []
+  }
+})
 
 function onSelect(ref: { close: () => void }) {
   setTimeout(() => ref.close(), 0)
@@ -119,7 +132,7 @@ const photoRequired = ref(false)
 async function loadOptions() {
   try {
     const [uadmRes, buildingRes, procRes] = await Promise.all([
-      api.get('/maintenance/uadms/', { params: { limit: 100 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 50 } }),
       api.get('/maintenance/buildings/', { params: { limit: 100 } }),
       api.get('/maintenance/procedures/', { params: { limit: 100 } }),
     ])
@@ -129,6 +142,28 @@ async function loadOptions() {
   } catch (e) {
     console.error('Error loading options:', e)
   }
+}
+
+function onUadmSearch(query: string) {
+  if (uadmSearchTimer) clearTimeout(uadmSearchTimer)
+  if (!query || query.length < 2) {
+    uadmLoading.value = false
+    return
+  }
+  uadmLoading.value = true
+  uadmSearchTimer = setTimeout(async () => {
+    try {
+      const res = await api.get('/maintenance/uadms/', { params: { search: query, limit: 50 } })
+      const results = res.data.items || res.data
+      const selectedIds = selectedUadms.value.map(u => u.id)
+      const merged = [...selectedUadms.value, ...results.filter((r: Uadm) => !selectedIds.includes(r.id))]
+      uadmOptions.value = merged
+    } catch (e) {
+      console.error('Error searching uadms:', e)
+    } finally {
+      uadmLoading.value = false
+    }
+  }, 300)
 }
 
 async function startCamera() {
@@ -388,6 +423,7 @@ function confirmCheckIn() {
       id_card_number: currentVisitor.value!.id_card_number,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       uadms_names: selectedUadms.value.map((u) => (u as any).name).join(';'),
+      show_buildings: showBuildings.value,
     }
     showBadgeModal.value = true
     success('Check-in confirmado')
@@ -728,8 +764,12 @@ onBeforeUnmount(() => {
             :options="uadmOptions"
             :multiple="true"
             :close-on-select="true"
+            :loading="uadmLoading"
+            :internal-search="false"
+            :preserve-search="true"
             @select="() => onSelect(uadmSelectRef)"
-            placeholder="Seleccione..."
+            @search-change="onUadmSearch"
+            placeholder="Buscar y seleccionar..."
             label="name"
             track-by="id"
             class="multiselect-dark"
@@ -737,7 +777,7 @@ onBeforeUnmount(() => {
         </div>
 
 <!-- Buildings Selection -->
-        <div>
+        <div v-if="showBuildings">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
             Edificios
           </label>
@@ -833,6 +873,7 @@ onBeforeUnmount(() => {
           :check-in="badgeData.check_in"
           :uadms="badgeData.uadms"
           :buildings="badgeData.buildings"
+          :show-buildings="showBuildings"
           :label-type="selectedLabelSize?.value"
         />
       </div>
@@ -856,6 +897,7 @@ onBeforeUnmount(() => {
     <BadgePrintPreview
       v-model="showBadgeModal"
       :visits="badgeVisit ? [badgeVisit] : []"
+      :show-buildings="showBuildings"
       close-label="Nueva Visita"
       @close="handleNewCheckin"
     />

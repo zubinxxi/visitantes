@@ -38,13 +38,17 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
         limit: int = 10,
         search: Optional[str] = None,
         search_fields: Optional[list[str]] = None,
+        ids: Optional[list[int]] = None,
     ) -> PaginatedResponse:
         offset = (page - 1) * limit
         
         from app.models.maintenance import Uadm as UadmModel, Province, Institution, TypeUadm
         
-        search_conditions = []
-        if search and search_fields:
+        # Fetch by specific IDs (ignores pagination and search)
+        if ids:
+            query = select(self.model).where(self.model.id.in_(ids))
+            count_query = select(func.count()).select_from(self.model).where(self.model.id.in_(ids))
+        elif search and search_fields:
             if self.model.__name__ == 'Uadm':
                 search_conditions.append(UadmModel.name.ilike(f"%{search}%"))
                 search_conditions.append(UadmModel.initials.ilike(f"%{search}%"))
@@ -77,8 +81,9 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
         result_count = await session.execute(count_query)
         total = result_count.scalar() or 0
         
-        # Get paginated items
-        query = query.offset(offset).limit(limit)
+        # Get items (skip pagination when fetching by specific IDs)
+        if not ids:
+            query = query.offset(offset).limit(limit)
         result = await session.execute(query)
         items = result.scalars().all()
         

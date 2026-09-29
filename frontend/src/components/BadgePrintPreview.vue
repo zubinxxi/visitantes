@@ -8,6 +8,7 @@ interface Props {
   modelValue: boolean
   visits: Visit[]
   closeLabel?: string
+  showBuildings?: boolean
 }
 
 interface Emits {
@@ -17,6 +18,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   closeLabel: 'Cerrar',
+  showBuildings: true,
 })
 
 const emit = defineEmits<Emits>()
@@ -196,6 +198,7 @@ function getVisitorName(visit: Visit): string {
                   :check-in="visit.check_in"
                   :uadms="visit.uadms_names || ''"
                   :buildings="visitBuildings(visit)"
+                  :show-buildings="showBuildings"
                   :label-type="selectedLabelSize.value"
                 />
               </div>

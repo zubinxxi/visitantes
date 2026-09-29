@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/lib/api'
 import type { Visit } from '@/types/visit'
 import { useToast } from '@/composables/useToast'
@@ -8,7 +8,7 @@ import BadgePrintPreview from '@/components/BadgePrintPreview.vue'
 import BaseModal from '@/components/Modal.vue'
 import Multiselect from 'vue-multiselect'
 
-interface Uadm { id: number; name: string }
+interface Uadm { id: number; name: string; id_type_uadm?: number }
 interface Building { id: number; description: string; code?: string }
 
 const { success, error: showError } = useToast()
@@ -32,6 +32,19 @@ const editBuildings = ref<Building[]>([])
 const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
 const saving = ref(false)
+const uadmLoading = ref(false)
+let uadmSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+const showEditBuildings = computed(() => {
+  if (editUadms.value.length === 0) return false
+  return editUadms.value.every(u => u.id_type_uadm != null && u.id_type_uadm >= 1 && u.id_type_uadm <= 6)
+})
+
+watch(showEditBuildings, (newVal) => {
+  if (!newVal) {
+    editBuildings.value = []
+  }
+})
 
 function parseIds(str: string): number[] {
   if (!str) return []
@@ -41,7 +54,7 @@ function parseIds(str: string): number[] {
 async function loadEditOptions() {
   try {
     const [uadmRes, buildingRes] = await Promise.all([
-      api.get('/maintenance/uadms/', { params: { limit: 100 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 50 } }),
       api.get('/maintenance/buildings/', { params: { limit: 100 } }),
     ])
     uadmOptions.value = uadmRes.data.items || uadmRes.data
@@ -49,6 +62,28 @@ async function loadEditOptions() {
   } catch (e) {
     console.error('Error loading edit options:', e)
   }
+}
+
+function onUadmSearch(query: string) {
+  if (uadmSearchTimer) clearTimeout(uadmSearchTimer)
+  if (!query || query.length < 2) {
+    uadmLoading.value = false
+    return
+  }
+  uadmLoading.value = true
+  uadmSearchTimer = setTimeout(async () => {
+    try {
+      const res = await api.get('/maintenance/uadms/', { params: { search: query, limit: 50 } })
+      const results = res.data.items || res.data
+      const selectedIds = editUadms.value.map(u => u.id)
+      const merged = [...editUadms.value, ...results.filter((r: Uadm) => !selectedIds.includes(r.id))]
+      uadmOptions.value = merged
+    } catch (e) {
+      console.error('Error searching uadms:', e)
+    } finally {
+      uadmLoading.value = false
+    }
+  }, 300)
 }
 
 async function openEditModal(visit: Visit) {
@@ -59,6 +94,18 @@ async function openEditModal(visit: Visit) {
 
   const uadmIds = parseIds(visit.uadm_visited)
   const buildingIds = parseIds(visit.buildings_visited)
+
+  if (uadmIds.length > 0) {
+    try {
+      const res = await api.get('/maintenance/uadms/', { params: { ids: uadmIds.join(','), limit: uadmIds.length } })
+      const fetchedUadms = res.data.items || res.data
+      const existingIds = new Set(uadmOptions.value.map(u => u.id))
+      const newUadms = fetchedUadms.filter((u: Uadm) => !existingIds.has(u.id))
+      uadmOptions.value = [...uadmOptions.value, ...newUadms]
+    } catch (e) {
+      console.error('Error fetching selected uadms:', e)
+    }
+  }
 
   editUadms.value = uadmOptions.value.filter(u => uadmIds.includes(u.id))
   editBuildings.value = buildingOptions.value.filter(b => buildingIds.includes(b.id))
@@ -325,14 +372,18 @@ onMounted(loadActive)
             v-model="editUadms"
             :options="uadmOptions"
             :multiple="true"
-            placeholder="Seleccione..."
+            :loading="uadmLoading"
+            :internal-search="false"
+            :preserve-search="true"
+            @search-change="onUadmSearch"
+            placeholder="Buscar y seleccionar..."
             label="name"
             track-by="id"
             class="multiselect-dark"
           />
         </div>
 
-        <div>
+        <div v-if="showEditBuildings">
           <label class="mb-1.5 block text-theme-sm font-medium text-gray-700 dark:text-gray-300">
             Edificios
           </label>

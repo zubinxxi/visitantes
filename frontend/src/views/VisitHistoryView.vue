@@ -435,6 +435,11 @@ onMounted(loadVisits)
               <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ selectedVisit.company_represents || 'No especificado' }}</p>
             </div>
           </div>
+
+          <div v-if="selectedVisit.uadms_names" class="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-3">
+            <p class="text-theme-xs text-gray-500 dark:text-gray-400 mb-1">Unidades Administrativas Visitadas</p>
+            <p class="text-theme-sm font-medium text-gray-800 dark:text-white">{{ selectedVisit.uadms_names }}</p>
+          </div>
         </div>
       </template>
 

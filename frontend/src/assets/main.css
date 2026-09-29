@@ -135,6 +135,65 @@
   @apply text-xs leading-[18px];
 }
 
+/* Multiselect dropdown z-index fix:.ensure dropdown appears above modal overlays */
+.multiselect--active {
+  z-index: 51 !important;
+}
+.multiselect__content-wrapper {
+  z-index: 51 !important;
+}
+
+/* Multiselect dark theme styling */
+.multiselect-dark .multiselect__tags {
+  @apply min-h-[44px] rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent py-2 px-3 text-sm text-gray-800 dark:text-gray-100;
+}
+.multiselect-dark .multiselect__tags:hover {
+  @apply border-gray-400 dark:border-gray-600;
+}
+.multiselect-dark.multiselect--active .multiselect__tags {
+  @apply border-brand-500 dark:border-brand-400 ring-1 ring-brand-500/20;
+}
+.multiselect-dark .multiselect__placeholder {
+  @apply text-gray-400 dark:text-gray-500 py-1;
+}
+.multiselect-dark .multiselect__input {
+  @apply text-gray-800 dark:text-gray-100 bg-transparent;
+}
+.multiselect-dark .multiselect__input::placeholder {
+  @apply text-gray-400 dark:text-gray-500;
+}
+.multiselect-dark .multiselect__content-wrapper {
+  @apply rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg;
+}
+.multiselect-dark .multiselect__element {
+  @apply text-sm;
+}
+.multiselect-dark .multiselect__option {
+  @apply px-3 py-2 text-gray-700 dark:text-gray-200;
+}
+.multiselect-dark .multiselect__option:hover,
+.multiselect-dark .multiselect__option--highlight {
+  @apply bg-gray-100 dark:bg-gray-700;
+}
+.multiselect-dark .multiselect__option--selected {
+  @apply bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400;
+}
+.multiselect-dark .multiselect__option--selected:hover {
+  @apply bg-brand-100 dark:bg-brand-500/20;
+}
+.multiselect-dark .multiselect__single {
+  @apply text-gray-800 dark:text-gray-100;
+}
+.multiselect-dark .multiselect__tag {
+  @apply bg-brand-100 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 rounded px-2 py-0.5 text-sm;
+}
+.multiselect-dark .multiselect__tag-icon:hover {
+  @apply bg-brand-200 dark:bg-brand-500/25;
+}
+.multiselect-dark .multiselect__spinner::before {
+  @apply border-t-gray-400 dark:border-t-gray-500 border-r-gray-200 dark:border-r-gray-700;
+}
+
 @media print {
   html {
     height: auto;

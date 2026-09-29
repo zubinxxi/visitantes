@@ -17,12 +17,14 @@ interface Props {
   labelWidth?: number
   labelHeight?: number
   labelType?: string
+  showBuildings?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   labelWidth: 101.6,
   labelHeight: 76.2,
   labelType: '4x3',
+  showBuildings: true,
 })
 
 const qrCodeUrl = ref('')
@@ -142,7 +144,7 @@ onMounted(() => {
           <!-- Bottom Row: QR + Buildings + Logo -->
           <div class="flex items-center justify-between mt-auto" style="margin-top: 2px;">
             <img v-if="qrCodeUrl" :src="qrCodeUrl" alt="QR" style="width: 16mm; height: 16mm;" />
-            <div style="flex: 1; margin: 0 3px;">
+            <div v-if="showBuildings && buildingIds.length > 0" style="flex: 1; margin: 0 3px;">
               <div style="font-size: 7.5pt; font-weight: bold; background-color: #eee; border-bottom: 0.4px solid #000; padding: 1px 2px;">
                 EDIFICIOS AUTORIZADOS
               </div>
@@ -208,31 +210,33 @@ onMounted(() => {
           </div>
 
           <!-- Buildings Section -->
-          <div style="font-size: 8pt; font-weight: bold; background-color: #eee; border-bottom: 0.5px solid #000; padding: 1px 2px; margin-top: 1mm;">
-            EDIFICIOS AUTORIZADOS
+          <div v-if="showBuildings && buildingIds.length > 0">
+            <div style="font-size: 8pt; font-weight: bold; background-color: #eee; border-bottom: 0.5px solid #000; padding: 1px 2px; margin-top: 1mm;">
+              EDIFICIOS AUTORIZADOS
+            </div>
+            <table style="width: 100%; border-collapse: collapse; border: 0.5px solid #000; margin-top: 1px;">
+              <thead>
+                <tr>
+                  <th v-for="(col, idx) in buildingColumns" :key="idx"
+                      style="background-color: #f0f0f0; font-size: 7.5pt; border: 0.5px solid #000; text-align: center; font-weight: bold; width: 14.28%;">
+                    {{ col }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td v-for="(col, idx) in buildingColumns" :key="idx"
+                      :style="{
+                        height: '16px',
+                        width: '14.28%',
+                        backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
+                        border: '0.5px solid #000',
+                      }">
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <table style="width: 100%; border-collapse: collapse; border: 0.5px solid #000; margin-top: 1px;">
-            <thead>
-              <tr>
-                <th v-for="(col, idx) in buildingColumns" :key="idx"
-                    style="background-color: #f0f0f0; font-size: 7.5pt; border: 0.5px solid #000; text-align: center; font-weight: bold; width: 14.28%;">
-                  {{ col }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td v-for="(col, idx) in buildingColumns" :key="idx"
-                    :style="{
-                      height: '16px',
-                      width: '14.28%',
-                      backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
-                      border: '0.5px solid #000',
-                    }">
-                </td>
-              </tr>
-            </tbody>
-          </table>
 
           <!-- QR + Logo -->
           <div class="flex items-center justify-between mt-auto" style="margin-top: auto;">
@@ -279,31 +283,33 @@ onMounted(() => {
           </div>
 
           <!-- Buildings Table (full width) -->
-          <div style="font-size: 7.5pt; font-weight: bold; background-color: #eee; border-bottom: 0.4px solid #000; padding: 1px 2px;">
-            EDIFICIOS AUTORIZADOS
+          <div v-if="showBuildings && buildingIds.length > 0">
+            <div style="font-size: 7.5pt; font-weight: bold; background-color: #eee; border-bottom: 0.4px solid #000; padding: 1px 2px;">
+              EDIFICIOS AUTORIZADOS
+            </div>
+            <table style="width: 100%; border-collapse: collapse; border: 0.5px solid #000;">
+              <thead>
+                <tr>
+                  <th v-for="(col, idx) in buildingColumns" :key="idx"
+                      style="background-color: #f0f0f0; font-size: 7.5pt; border: 0.5px solid #000; text-align: center; font-weight: bold; width: 14.28%;">
+                    {{ col }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td v-for="(col, idx) in buildingColumns" :key="idx"
+                      :style="{
+                        height: '15px',
+                        width: '14.28%',
+                        backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
+                        border: '0.5px solid #000',
+                      }">
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <table style="width: 100%; border-collapse: collapse; border: 0.5px solid #000;">
-            <thead>
-              <tr>
-                <th v-for="(col, idx) in buildingColumns" :key="idx"
-                    style="background-color: #f0f0f0; font-size: 7.5pt; border: 0.5px solid #000; text-align: center; font-weight: bold; width: 14.28%;">
-                  {{ col }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td v-for="(col, idx) in buildingColumns" :key="idx"
-                    :style="{
-                      height: '15px',
-                      width: '14.28%',
-                      backgroundColor: isBuildingSelected(idx) ? buildingColorFor(idx) : '#fff',
-                      border: '0.5px solid #000',
-                    }">
-                </td>
-              </tr>
-            </tbody>
-          </table>
 
           <!-- QR + Logo -->
           <div class="flex items-center justify-between mt-auto" style="margin-top: 2px;">
@@ -351,7 +357,7 @@ onMounted(() => {
           <!-- Bottom Row: QR + Buildings + Logo -->
           <div class="flex items-center justify-between" style="margin-top: auto;">
             <img v-if="qrCodeUrl" :src="qrCodeUrl" alt="QR" style="width: 15mm; height: 15mm;" />
-            <div style="flex: 1; margin: 0 2px;">
+            <div v-if="showBuildings && buildingIds.length > 0" style="flex: 1; margin: 0 2px;">
               <div style="font-size: 7pt; font-weight: bold; background-color: #eee; border-bottom: 0.4px solid #000; padding: 1px 2px;">
                 EDIFICIOS AUTORIZADOS
               </div>
