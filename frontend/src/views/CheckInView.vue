@@ -69,8 +69,6 @@ const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
 const procedureOptions = ref<Procedure[]>([])
 const selectedProcedure = ref<Procedure | null>(null)
-const uadmLoading = ref(false)
-let uadmSearchTimer: ReturnType<typeof setTimeout> | null = null
 const genderOptions = [
   { value: 'M', label: 'Masculino' },
   { value: 'F', label: 'Femenino' },
@@ -132,7 +130,7 @@ const photoRequired = ref(false)
 async function loadOptions() {
   try {
     const [uadmRes, buildingRes, procRes] = await Promise.all([
-      api.get('/maintenance/uadms/', { params: { limit: 50 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 1000 } }),
       api.get('/maintenance/buildings/', { params: { limit: 100 } }),
       api.get('/maintenance/procedures/', { params: { limit: 100 } }),
     ])
@@ -142,28 +140,6 @@ async function loadOptions() {
   } catch (e) {
     console.error('Error loading options:', e)
   }
-}
-
-function onUadmSearch(query: string) {
-  if (uadmSearchTimer) clearTimeout(uadmSearchTimer)
-  if (!query || query.length < 2) {
-    uadmLoading.value = false
-    return
-  }
-  uadmLoading.value = true
-  uadmSearchTimer = setTimeout(async () => {
-    try {
-      const res = await api.get('/maintenance/uadms/', { params: { search: query, limit: 50 } })
-      const results = res.data.items || res.data
-      const selectedIds = selectedUadms.value.map(u => u.id)
-      const merged = [...selectedUadms.value, ...results.filter((r: Uadm) => !selectedIds.includes(r.id))]
-      uadmOptions.value = merged
-    } catch (e) {
-      console.error('Error searching uadms:', e)
-    } finally {
-      uadmLoading.value = false
-    }
-  }, 300)
 }
 
 async function startCamera() {
@@ -764,11 +740,8 @@ onBeforeUnmount(() => {
             :options="uadmOptions"
             :multiple="true"
             :close-on-select="true"
-            :loading="uadmLoading"
-            :internal-search="false"
             :preserve-search="true"
             @select="() => onSelect(uadmSelectRef)"
-            @search-change="onUadmSearch"
             placeholder="Buscar y seleccionar..."
             label="name"
             track-by="id"

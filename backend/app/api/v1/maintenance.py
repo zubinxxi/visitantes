@@ -49,6 +49,7 @@ class MaintenanceCRUD(Generic[ModelType, CreateSchemaType, UpdateSchemaType, Rea
             query = select(self.model).where(self.model.id.in_(ids))
             count_query = select(func.count()).select_from(self.model).where(self.model.id.in_(ids))
         elif search and search_fields:
+            search_conditions = []
             if self.model.__name__ == 'Uadm':
                 search_conditions.append(UadmModel.name.ilike(f"%{search}%"))
                 search_conditions.append(UadmModel.initials.ilike(f"%{search}%"))

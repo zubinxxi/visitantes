@@ -32,8 +32,6 @@ const editBuildings = ref<Building[]>([])
 const uadmOptions = ref<Uadm[]>([])
 const buildingOptions = ref<Building[]>([])
 const saving = ref(false)
-const uadmLoading = ref(false)
-let uadmSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const showEditBuildings = computed(() => {
   if (editUadms.value.length === 0) return false
@@ -54,7 +52,7 @@ function parseIds(str: string): number[] {
 async function loadEditOptions() {
   try {
     const [uadmRes, buildingRes] = await Promise.all([
-      api.get('/maintenance/uadms/', { params: { limit: 50 } }),
+      api.get('/maintenance/uadms/', { params: { limit: 1000 } }),
       api.get('/maintenance/buildings/', { params: { limit: 100 } }),
     ])
     uadmOptions.value = uadmRes.data.items || uadmRes.data
@@ -62,28 +60,6 @@ async function loadEditOptions() {
   } catch (e) {
     console.error('Error loading edit options:', e)
   }
-}
-
-function onUadmSearch(query: string) {
-  if (uadmSearchTimer) clearTimeout(uadmSearchTimer)
-  if (!query || query.length < 2) {
-    uadmLoading.value = false
-    return
-  }
-  uadmLoading.value = true
-  uadmSearchTimer = setTimeout(async () => {
-    try {
-      const res = await api.get('/maintenance/uadms/', { params: { search: query, limit: 50 } })
-      const results = res.data.items || res.data
-      const selectedIds = editUadms.value.map(u => u.id)
-      const merged = [...editUadms.value, ...results.filter((r: Uadm) => !selectedIds.includes(r.id))]
-      uadmOptions.value = merged
-    } catch (e) {
-      console.error('Error searching uadms:', e)
-    } finally {
-      uadmLoading.value = false
-    }
-  }, 300)
 }
 
 async function openEditModal(visit: Visit) {
@@ -372,10 +348,7 @@ onMounted(loadActive)
             v-model="editUadms"
             :options="uadmOptions"
             :multiple="true"
-            :loading="uadmLoading"
-            :internal-search="false"
             :preserve-search="true"
-            @search-change="onUadmSearch"
             placeholder="Buscar y seleccionar..."
             label="name"
             track-by="id"
